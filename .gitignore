@@ -13,3 +13,6 @@ venv/
 .ruff_cache/
 .mypy_cache/
 *.egg
+pretrained_models/**
+!pretrained_models/
+!pretrained_models/README.md

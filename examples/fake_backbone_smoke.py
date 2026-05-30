@@ -5,7 +5,13 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from prismatic_adapter import AdapterConfig, PolicyConfig, PrismaticAdapterPolicy, SequenceConfig
+from prismatic_adapter import (
+    AdapterConfig,
+    ConditioningConfig,
+    PolicyConfig,
+    PrismaticAdapterPolicy,
+    SequenceConfig,
+)
 from prismatic_adapter.backbones.base import BackboneAdapter
 from prismatic_adapter.sequence import build_multimodal_embeddings, replace_masked_embeddings
 from prismatic_adapter.types import AdapterBatch, BackboneOutput
@@ -61,7 +67,12 @@ def main() -> None:
     )
     cfg = AdapterConfig(
         sequence=SequenceConfig(action_query_tokens=query_tokens),
-        policy=PolicyConfig(hidden_size=32, action_dim=2, action_horizon=3, num_layers=4, num_heads=4),
+        conditioning=ConditioningConfig(
+            num_condition_layers=3,
+            raw_token_budget=3,
+            projection="linear",
+        ),
+        policy=PolicyConfig(hidden_size=16, action_dim=2, action_horizon=3, num_layers=4, num_heads=4),
     )
     model = PrismaticAdapterPolicy(TinyBackboneAdapter(), cfg, proprio_dim=6)
     actions = model(batch)

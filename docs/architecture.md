@@ -20,6 +20,12 @@ HiddenStateExtractor
   AQ branch: fused hidden states over shifted action mask
         |
         v
+Conditioning adapters
+  LayerSelector: arbitrary backbone depth -> policy depth
+  ConditionProjector: backbone hidden size -> adapter hidden size
+  TokenCompressor: arbitrary visual token count -> fixed Raw budget
+        |
+        v
 BridgeActionHead
   action-time latent tokens attend to:
     self tokens
@@ -51,7 +57,21 @@ normalized action chunk [B, H, A]
 
 推荐所有新模型都尽量支持 `inputs_embeds` 前向。这样 ActionQuery 可以直接替换 embedding，而不需要污染 tokenizer vocabulary。
 
-## 4. 换大模型时主要看什么
+## 4. 其他部件的接口化
+
+| 部件 | 代码 | 解决的问题 |
+| --- | --- | --- |
+| `LayerSelector` | `components/conditioning.py` | 不同模型层数不同，统一采样到固定条件层数。 |
+| `ConditionProjector` | `components/conditioning.py` | 不同 hidden size 投影到 policy hidden size。 |
+| `MeanPoolTokenCompressor` | `components/conditioning.py` | 不同视觉 token 数压缩到固定 Raw token budget。 |
+| `ActionNormalizer` | `components/actions.py` | 不同数据集动作尺度、关节维度归一化和反归一化。 |
+| `PromptAdapter` | `components/prompts.py` | 不同 tokenizer/chat template 下构造 placeholder 与 `action_mask`。 |
+| `SampleAdapter` | `data.py` | RLDS/LIBERO/CALVIN/真实机器人样本统一变成 `AdapterBatch`。 |
+| `PaddedBatchCollator` | `data.py` | variable-length prompt pad，同时堆叠图像、动作和 proprio。 |
+| `ActionPredictor` | `inference.py` | 推理时输出 normalized action 和环境尺度 action。 |
+| checkpoint helpers | `checkpoint.py` | adapter/action head/proprio/backbone 权重分组保存。 |
+
+## 5. 换大模型时主要看什么
 
 - `hidden_size`: 必须和 `PolicyConfig.hidden_size` 一致。
 - hidden state tuple 是否包含 embedding state：如果包含，默认 `hidden_state_source="transformer_layers"` 会跳过第 0 个状态。
@@ -59,7 +79,7 @@ normalized action chunk [B, H, A]
 - prompt 中 action placeholder 个数必须等于 `SequenceConfig.action_query_tokens`。
 - 如果模型无法以 `inputs_embeds` 调用，需要在 adapter 中实现等价的 embedding injection 入口。
 
-## 5. 与 VLA-Adapter-Pro 的关系
+## 6. 与 VLA-Adapter-Pro 的关系
 
 这里保留了 VLA-Adapter-Pro 的核心结构：
 

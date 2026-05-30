@@ -53,3 +53,11 @@ class LayerCondition:
 
     raw_tokens: torch.Tensor
     action_query_tokens: torch.Tensor
+
+
+@dataclass(frozen=True)
+class PredictionOutput:
+    """Policy prediction before and after optional action unnormalization."""
+
+    normalized_actions: torch.Tensor
+    actions: torch.Tensor

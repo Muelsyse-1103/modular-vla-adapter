@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -51,12 +51,39 @@ class PolicyConfig:
 
 
 @dataclass(frozen=True)
+class ConditioningConfig:
+    """How backbone hidden states are normalized before the Bridge policy."""
+
+    layer_strategy: Literal["all", "uniform", "last", "indices"] = "uniform"
+    num_condition_layers: int | None = None
+    layer_indices: tuple[int, ...] | None = None
+    include_embedding_state: bool = False
+    raw_token_budget: int | None = 512
+    raw_compression: Literal["none", "mean_pool"] = "mean_pool"
+    projection: Literal["identity", "linear"] = "linear"
+
+    def validate(self) -> None:
+        if self.layer_strategy not in {"all", "uniform", "last", "indices"}:
+            raise ValueError("unsupported layer_strategy")
+        if self.num_condition_layers is not None and self.num_condition_layers <= 0:
+            raise ValueError("num_condition_layers must be positive")
+        if self.layer_strategy == "indices" and not self.layer_indices:
+            raise ValueError("layer_indices must be provided when layer_strategy='indices'")
+        if self.raw_token_budget is not None and self.raw_token_budget <= 0:
+            raise ValueError("raw_token_budget must be positive")
+        if self.raw_compression not in {"none", "mean_pool"}:
+            raise ValueError("unsupported raw_compression")
+        if self.projection not in {"identity", "linear"}:
+            raise ValueError("unsupported projection")
+
+
+@dataclass(frozen=True)
 class AdapterConfig:
     """Top-level VLA adapter configuration."""
 
     sequence: SequenceConfig
     policy: PolicyConfig
-    hidden_state_source: Literal["transformer_layers", "all_states"] = "transformer_layers"
+    conditioning: ConditioningConfig = field(default_factory=ConditioningConfig)
     train_backbone: bool = False
     train_action_queries: bool = True
     train_policy: bool = True
@@ -64,5 +91,4 @@ class AdapterConfig:
     def validate(self) -> None:
         self.sequence.validate()
         self.policy.validate()
-        if self.hidden_state_source not in {"transformer_layers", "all_states"}:
-            raise ValueError("hidden_state_source must be transformer_layers or all_states")
+        self.conditioning.validate()
