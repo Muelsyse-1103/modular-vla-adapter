@@ -68,6 +68,8 @@ class PrismaticAdapterPolicy(nn.Module):
 
     def configure_trainable_parameters(self) -> None:
         self.backbone.requires_grad_(self.config.train_backbone)
+        for module in self.backbone.adapter_modules():
+            module.requires_grad_(self.config.train_policy)
         self.action_queries.requires_grad_(self.config.train_action_queries)
         self.condition_projector.requires_grad_(self.config.train_policy)
         self.action_head.requires_grad_(self.config.train_policy)

@@ -21,6 +21,7 @@ hf = [
     "peft>=0.10",
     "safetensors>=0.4",
     "timm>=0.9",
+    "wandb>=0.16",
 ]
 dev = [
     "pytest>=8",

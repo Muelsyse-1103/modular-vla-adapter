@@ -126,3 +126,19 @@ python examples/qwen35_vit_policy.py
 - 默认冻结 backbone，只训练 ActionQuery、Bridge policy 和可选 proprio projector；如需 LoRA，可在外层把 backbone 包成 PEFT 模型后设 `train_backbone=True`。
 
 更详细的架构说明在 [docs/architecture.md](docs/architecture.md)。
+
+## Training
+
+训练入口已补齐到 `scripts/train_qwen35_vit.py`。它使用 dataset factory 接入外部
+RLDS/LIBERO/CALVIN 数据，支持 LoRA、AMP、梯度累积、验证、checkpoint/resume、
+JSONL 与可选 W&B 日志。
+
+```bash
+python scripts/train_qwen35_vit.py \
+  --dataset-factory my_project.datasets:build_libero_dataset \
+  --vision-pretrained \
+  --use-lora \
+  --output-dir outputs/qwen35_vit_libero_object
+```
+
+训练代码说明见 [docs/training.md](docs/training.md)。

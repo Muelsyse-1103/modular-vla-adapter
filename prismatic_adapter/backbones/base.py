@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 
 import torch
 
@@ -27,3 +28,13 @@ class BackboneAdapter(ABC, torch.nn.Module):
         action_queries: torch.Tensor,
     ) -> BackboneOutput:
         """Run the VLM with ActionQuery embeddings inserted into the prompt."""
+
+    def adapter_modules(self) -> Iterable[torch.nn.Module]:
+        """Modules owned by the adapter even when the pretrained backbone is frozen.
+
+        Examples include a newly initialized vision-to-language projector in a
+        Qwen + ViT composition. These modules should usually train with the
+        policy rather than be frozen with the downloaded backbone.
+        """
+
+        return ()

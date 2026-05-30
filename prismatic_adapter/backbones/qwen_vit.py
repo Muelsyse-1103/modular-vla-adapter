@@ -163,6 +163,9 @@ class QwenTimmVLAAdapter(BackboneAdapter):
     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.language_model.get_input_embeddings()(input_ids)
 
+    def adapter_modules(self):
+        return (self.vision_projector,)
+
     def encode_vision(self, pixel_values: torch.Tensor) -> torch.Tensor:
         patch_features = self.vision_backbone(pixel_values)
         return self.vision_projector(patch_features.to(dtype=self.vision_projector[0].weight.dtype))
