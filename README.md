@@ -26,25 +26,20 @@
 
 ```text
 prismatic_adapter/
-├── backbones/
-│   ├── base.py              # BackboneAdapter 抽象接口
-│   └── hf_prismatic.py      # OpenVLA/Prismatic-like HF wrapper
-├── components/
-│   ├── actions.py           # action normalize / unnormalize
-│   ├── conditioning.py      # layer selector / projector / token compressor
-│   └── prompts.py           # prompt + action placeholder helper
-├── policy/
-│   └── bridge.py            # Bridge Attention action head
-├── training/
-│   ├── losses.py            # normalized action L1
-│   └── step.py              # minimal train step
+├── pipeline.py              # VLAAdapter 完整流水线
+├── adapters/                # 新大模型/视觉塔适配入口
+├── conditioning/            # 层选择、hidden 投影、Raw token 压缩
+├── action_heads/            # Bridge continuous action head
+├── datasets/                # AdapterBatch / SampleAdapter / collator
+├── training/                # trainer、optimizer、scheduler、LoRA、logging
+├── runtime/                 # inference 和 checkpoint
 ├── config.py
-├── data.py                  # dataset sample adapter + padded collator
-├── inference.py             # ActionPredictor
-├── model.py                 # PrismaticAdapterPolicy
 ├── sequence.py              # ActionQuery 替换、视觉 token 拼接、hidden-state 抽取
 └── types.py
 ```
+
+旧路径 `backbones/`、`components/`、`policy/` 仍保留作为实现和兼容层；新代码建议从
+`adapters/`、`conditioning/`、`action_heads/`、`pipeline.VLAAdapter` 这些更清晰的路径导入。
 
 ## 接入一个新大模型
 
@@ -125,7 +120,8 @@ python examples/qwen35_vit_policy.py
 - hidden size、层数、Raw token 数都通过适配组件变成固定 policy 输入。
 - 默认冻结 backbone，只训练 ActionQuery、Bridge policy 和可选 proprio projector；如需 LoRA，可在外层把 backbone 包成 PEFT 模型后设 `train_backbone=True`。
 
-更详细的架构说明在 [docs/architecture.md](docs/architecture.md)。
+更详细的结构地图在 [docs/framework_map.md](docs/framework_map.md)，架构说明在
+[docs/architecture.md](docs/architecture.md)。
 
 ## Training
 

@@ -5,6 +5,7 @@ from prismatic_adapter.data import PaddedBatchCollator, SampleAdapter
 from prismatic_adapter.factory import build_policy
 from prismatic_adapter.inference import ActionPredictor
 from prismatic_adapter.model import PrismaticAdapterPolicy
+from prismatic_adapter.pipeline import VLAAdapter
 
 __all__ = [
     "AdapterConfig",
@@ -15,5 +16,6 @@ __all__ = [
     "PrismaticAdapterPolicy",
     "SampleAdapter",
     "SequenceConfig",
+    "VLAAdapter",
     "build_policy",
 ]

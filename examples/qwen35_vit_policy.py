@@ -10,7 +10,7 @@ from __future__ import annotations
 import torch
 
 from prismatic_adapter import AdapterConfig, ConditioningConfig, PolicyConfig, SequenceConfig
-from prismatic_adapter.backbones import QwenTimmVLAAdapter
+from prismatic_adapter.adapters import QwenTimmVLAAdapter
 from prismatic_adapter.factory import build_policy
 
 
