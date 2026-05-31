@@ -15,6 +15,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+runtime = [
+    "numpy>=1.24",
+    "pyzmq>=25",
+]
 hf = [
     "transformers>=4.40",
     "huggingface-hub>=0.23",
@@ -29,7 +33,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["prismatic_adapter*"]
+include = ["env_process*", "prismatic_adapter*", "vla_runtime*"]
 
 [tool.ruff]
 line-length = 100

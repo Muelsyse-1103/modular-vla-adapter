@@ -138,3 +138,23 @@ python scripts/train_qwen35_vit.py \
 ```
 
 训练代码说明见 [docs/training.md](docs/training.md)。
+
+## Remote Env Evaluation
+
+评估环境可以作为独立 Python 进程运行，通过 ZMQ 与模型/训练进程交互，避免
+LIBERO、robosuite、MuJoCo 等依赖和 Qwen/torch/timm 环境冲突。
+
+```text
+prismatic_adapter/  # 模型适配
+vla_runtime/        # policy rollout / eval runner
+env_process/        # 独立环境进程
+```
+
+先跑 fake env 闭环：
+
+```bash
+python scripts/serve_fake_env.py --endpoint tcp://127.0.0.1:5555
+python scripts/eval_with_remote_env.py --endpoint tcp://127.0.0.1:5555
+```
+
+说明见 [docs/remote_env.md](docs/remote_env.md)。

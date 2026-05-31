@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 DEFAULT_VISION_MODEL_IDS = (
     "vit_large_patch14_reg4_dinov2.lvd142m",
