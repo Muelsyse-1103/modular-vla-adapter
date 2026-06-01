@@ -65,6 +65,21 @@ outputs/remote_eval_smoke/
 `-- metrics.json
 ```
 
+To validate the model-side adapter path without loading Qwen/DINOv2/SigLIP,
+start the same fake env and run:
+
+```bash
+python examples/tiny_adapter_remote_eval.py \
+  --endpoint tcp://127.0.0.1:5555 \
+  --output-dir outputs/tiny_adapter_remote_eval
+```
+
+This exercises:
+
+```text
+RemoteEnvClient -> ObservationBatchBuilder -> VLAAdapter -> action chunk -> env.step
+```
+
 ## LIBERO Backend
 
 Run the LIBERO backend from a separate Python environment that has LIBERO,

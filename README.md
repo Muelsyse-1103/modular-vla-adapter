@@ -157,6 +157,13 @@ python scripts/serve_fake_env.py --endpoint tcp://127.0.0.1:5555
 python scripts/eval_with_remote_env.py --endpoint tcp://127.0.0.1:5555
 ```
 
+如果要验证模型侧 adapter 链路但不加载 Qwen/DINOv2/SigLIP 大模型：
+
+```bash
+python scripts/serve_fake_env.py --endpoint tcp://127.0.0.1:5555
+python examples/tiny_adapter_remote_eval.py --endpoint tcp://127.0.0.1:5555
+```
+
 LIBERO 后端已经拆到 `env_process/backends/libero.py`，启动入口为：
 
 ```bash
