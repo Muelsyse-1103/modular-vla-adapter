@@ -39,6 +39,28 @@ Use `SampleAdapter` when your native sample is RLDS/LIBERO/CALVIN-specific.
 The framework deliberately does not decide how to chunk actions or preprocess
 camera images; those choices belong to the dataset adapter.
 
+For LIBERO-style records, the built-in adapter expects one Python mapping with:
+
+```python
+{
+    "instruction": "...",
+    "image_primary": ...,  # HWC or CHW RGB
+    "image_wrist": ...,    # optional if image_keys excludes it
+    "proprio": ...,        # 8D for LIBERO
+    "actions": ...,        # [H, 7]
+}
+```
+
+Example dataset wrapper:
+
+```python
+from prismatic_adapter.datasets import LiberoSampleAdapter, compute_action_stats
+
+adapter = LiberoSampleAdapter(tokenizer)
+item = adapter(raw_libero_sample)
+stats = compute_action_stats(raw_samples)
+```
+
 ## Qwen3.5 + ViT Training Entry
 
 `scripts/train_qwen35_vit.py` builds:
@@ -101,3 +123,19 @@ Each training checkpoint contains:
 - optimizer and scheduler state for exact resume.
 
 Use `--resume-path outputs/.../latest.pt` to continue training.
+
+## Remote Evaluation
+
+After training, run the environment process separately and evaluate with:
+
+```bash
+python scripts/eval_qwen35_vit_remote.py \
+  --endpoint tcp://127.0.0.1:5555 \
+  --qwen-path pretrained_models/Qwen3.5-2B \
+  --checkpoint outputs/qwen35_vit_libero_object/latest.pt \
+  --action-stats-json path/to/action_stats.json \
+  --task-limit 1
+```
+
+Use `--vision-pretrained` only after the TIMM vision weights are available in
+the environment cache.

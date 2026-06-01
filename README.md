@@ -166,4 +166,13 @@ python scripts/serve_libero_env.py \
   --resolution 256
 ```
 
+模型侧评估入口：
+
+```bash
+python scripts/eval_qwen35_vit_remote.py \
+  --endpoint tcp://127.0.0.1:5555 \
+  --checkpoint outputs/qwen35_vit_libero_object/latest.pt \
+  --action-stats-json path/to/action_stats.json
+```
+
 说明见 [docs/remote_env.md](docs/remote_env.md)。

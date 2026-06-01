@@ -89,6 +89,17 @@ The backend follows the reference `run_libero_eval.py` flow:
 The model side does not import LIBERO. It only receives decoded observations and
 sends actions through `RemoteEnvClient`.
 
+Model-side Qwen+ViT evaluation entry:
+
+```bash
+python scripts/eval_qwen35_vit_remote.py \
+  --endpoint tcp://127.0.0.1:5555 \
+  --qwen-path pretrained_models/Qwen3.5-2B \
+  --checkpoint outputs/qwen35_vit_libero_object/latest.pt \
+  --action-stats-json path/to/action_stats.json \
+  --task-limit 1
+```
+
 ## Backend Contract
 
 ```python
