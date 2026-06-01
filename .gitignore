@@ -9,6 +9,7 @@ build/
 venv/
 .env
 .env.*
+.conda/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
