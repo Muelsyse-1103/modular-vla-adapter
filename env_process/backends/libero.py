@@ -200,9 +200,10 @@ class LiberoBackend(EnvBackend):
         initial_state_index: Any,
         initial_states_path: str,
     ) -> tuple[Any | None, int | None]:
-        initial_states = self._task_suite.get_task_init_states(task_id)
         if initial_states_path and initial_states_path != "DEFAULT":
             initial_states = _load_initial_states(initial_states_path, task_id)
+        else:
+            initial_states = self._load_default_initial_states(task_id)
 
         if initial_states is None or len(initial_states) == 0:
             return None, None
@@ -212,6 +213,20 @@ class LiberoBackend(EnvBackend):
         else:
             index = int(initial_state_index) % len(initial_states)
         return initial_states[index], index
+
+    def _load_default_initial_states(self, task_id: int):
+        try:
+            return self._task_suite.get_task_init_states(task_id)
+        except Exception as exc:
+            if "Weights only load failed" not in str(exc):
+                raise
+            task = self._task_suite.get_task(task_id)
+            path = os.path.join(
+                self._get_libero_path("init_states"),
+                task.problem_folder,
+                task.init_states_file,
+            )
+            return _torch_load(path)
 
     def _make_observation(self, raw_obs: dict[str, Any]) -> dict[str, np.ndarray]:
         proprio = np.concatenate(
@@ -261,6 +276,10 @@ def _import_libero():
 
 
 def _load_initial_states(path: str, task_id: int):
+    suffix = os.path.splitext(path)[1]
+    if suffix in {".init", ".pruned_init", ".pt", ".pth"}:
+        return _torch_load(path)
+
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -274,6 +293,20 @@ def _load_initial_states(path: str, task_id: int):
     if isinstance(data, list) and data and isinstance(data[0], list):
         return data[task_id]
     return data
+
+
+def _torch_load(path: str):
+    try:
+        import torch
+    except ImportError as exc:
+        raise ImportError("Loading LIBERO initial states requires torch in the env process.") from exc
+
+    try:
+        return torch.load(path)
+    except Exception as exc:
+        if "Weights only load failed" not in str(exc):
+            raise
+        return torch.load(path, weights_only=False)
 
 
 def _dummy_action() -> list[float]:
