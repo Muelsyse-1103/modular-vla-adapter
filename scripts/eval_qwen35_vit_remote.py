@@ -34,6 +34,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--amp-dtype", default="bfloat16", choices=["none", "float16", "bfloat16"])
     parser.add_argument("--vision-pretrained", action="store_true")
+    parser.add_argument(
+        "--vision-model-ids",
+        default=None,
+        help="Comma-separated TIMM ids. Defaults to DINOv2 large + SigLIP SO400M.",
+    )
+    parser.add_argument(
+        "--vision-image-sizes",
+        default=None,
+        help="Comma-separated input sizes matching --vision-model-ids, e.g. 224,224.",
+    )
+    parser.add_argument(
+        "--vision-token-align",
+        default="interpolate",
+        choices=["interpolate", "truncate", "error"],
+        help="How to align DINOv2/SigLIP patch-token counts before fusion.",
+    )
     parser.add_argument("--num-views", type=int, default=2)
     parser.add_argument("--image-keys", default="image_primary,image_wrist")
     parser.add_argument("--image-size", type=int, default=224)
@@ -66,10 +82,26 @@ def load_action_normalizer(path: str | None) -> ActionNormalizer | None:
     return ActionNormalizer(stats)
 
 
+def parse_csv(value: str | None) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def parse_int_csv(value: str | None) -> tuple[int, ...] | None:
+    parsed = parse_csv(value)
+    if parsed is None:
+        return None
+    return tuple(int(item) for item in parsed)
+
+
 def build_model(args: argparse.Namespace):
     sequence_cfg = SequenceConfig(action_query_tokens=64)
     backbone = QwenTimmVLAAdapter.from_pretrained(
         qwen_path=args.qwen_path,
+        vision_model_ids=parse_csv(args.vision_model_ids),
+        vision_image_sizes=parse_int_csv(args.vision_image_sizes),
+        vision_token_align=args.vision_token_align,
         vision_pretrained=args.vision_pretrained,
         num_views=args.num_views,
         sequence_config=sequence_cfg,
