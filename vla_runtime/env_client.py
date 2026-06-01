@@ -46,6 +46,7 @@ class RemoteEnvClient:
         instruction: str | None = None,
         seed: int | None = None,
         episode_id: str | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         response = self._send(
             request(
@@ -54,6 +55,7 @@ class RemoteEnvClient:
                 instruction=instruction,
                 seed=seed,
                 episode_id=episode_id,
+                **kwargs,
             )
         )
         response["observation"] = decode_observation(response["observation"])

@@ -49,7 +49,7 @@ class EnvBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self, task_id: int, instruction: str | None = None, seed: int | None = None) -> EnvObs:
+    def reset(self, task_id: int, instruction: str | None = None, seed: int | None = None, **kwargs: Any) -> EnvObs:
         raise NotImplementedError
 
     @abstractmethod

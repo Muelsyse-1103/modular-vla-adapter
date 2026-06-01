@@ -27,7 +27,7 @@ class FakeEnvBackend(EnvBackend):
             TaskSpec(task_id=1, instruction="move to the blue target"),
         ]
 
-    def reset(self, task_id: int, instruction: str | None = None, seed: int | None = None) -> EnvObs:
+    def reset(self, task_id: int, instruction: str | None = None, seed: int | None = None, **kwargs) -> EnvObs:
         self._rng = np.random.default_rng(seed if seed is not None else task_id)
         self._step = 0
         tasks = {task.task_id: task.instruction for task in self.list_tasks()}

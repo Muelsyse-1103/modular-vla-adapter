@@ -157,4 +157,13 @@ python scripts/serve_fake_env.py --endpoint tcp://127.0.0.1:5555
 python scripts/eval_with_remote_env.py --endpoint tcp://127.0.0.1:5555
 ```
 
+LIBERO 后端已经拆到 `env_process/backends/libero.py`，启动入口为：
+
+```bash
+python scripts/serve_libero_env.py \
+  --endpoint tcp://127.0.0.1:5555 \
+  --task-suite libero_object \
+  --resolution 256
+```
+
 说明见 [docs/remote_env.md](docs/remote_env.md)。

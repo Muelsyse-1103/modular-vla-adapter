@@ -85,10 +85,21 @@ class EnvZmqServer:
             self.backends[episode_id].close()
         backend = self.backend_factory()
         self.backends[episode_id] = backend
+        reset_kwargs = {
+            key: message[key]
+            for key in (
+                "initial_state_index",
+                "initial_states_path",
+                "max_steps",
+                "num_steps_wait",
+            )
+            if key in message
+        }
         obs = backend.reset(
             task_id=int(message.get("task_id", 0)),
             instruction=message.get("instruction"),
             seed=message.get("seed"),
+            **reset_kwargs,
         )
         return ok(
             "RESET",
