@@ -49,6 +49,48 @@ def test_rlds_episode_dataset_applies_adapter():
     assert items[0]["actions"].shape == (2, 7)
 
 
+def test_iter_rlds_samples_accepts_materialized_step_list():
+    episode = {
+        "language_instruction": b"pick up the cube",
+        "steps": [
+            {
+                "observation": {
+                    "image": np.full((8, 8, 3), idx, dtype=np.uint8),
+                    "wrist_image": np.full((8, 8, 3), idx + 1, dtype=np.uint8),
+                    "state": np.full(8, idx, dtype=np.float32),
+                },
+                "action": np.full(7, idx, dtype=np.float32),
+            }
+            for idx in range(3)
+        ],
+    }
+
+    samples = list(iter_rlds_samples([episode], RldsConfig(action_horizon=2)))
+
+    assert len(samples) == 3
+    assert samples[0]["instruction"] == "pick up the cube"
+    assert samples[0]["actions"].shape == (2, 7)
+
+
+def test_materialize_rlds_tree_converts_nested_mapping():
+    from prismatic_adapter.datasets.rlds import _materialize_rlds_tree
+
+    tree = _materialize_rlds_tree(
+        {
+            "language_instruction": np.array(b"open drawer"),
+            "steps": [
+                {
+                    "observation": {"image": np.zeros((4, 4, 3), dtype=np.uint8)},
+                    "action": np.ones(7, dtype=np.float32),
+                }
+            ],
+        }
+    )
+
+    assert tree["language_instruction"] == b"open drawer"
+    assert tree["steps"][0]["action"].shape == (7,)
+
+
 def test_iter_rlds_samples_accepts_dict_of_step_arrays():
     episode = {
         "steps": {

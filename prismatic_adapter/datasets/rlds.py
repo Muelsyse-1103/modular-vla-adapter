@@ -180,26 +180,63 @@ def build_rlds_tfds_dataset(config: RldsConfig, adapter: Any):
 
 def _iter_tfds_episodes(config: RldsConfig) -> Iterable[Mapping[str, Any]]:
     try:
+        import tensorflow as tf
         import tensorflow_datasets as tfds
     except ImportError as exc:
         raise ImportError(
             "RLDS TFDS loading requires tensorflow-datasets. Install the rlds extras."
         ) from exc
 
+    # Keep TensorFlow off the GPU so PyTorch training can use it exclusively.
+    tf.config.set_visible_devices([], "GPU")
+
     dataset = tfds.builder(config.tfds_name, data_dir=config.data_dir).as_dataset(
         split=config.split,
         shuffle_files=config.shuffle_files,
     )
-    iterator = dataset.as_numpy_iterator() if hasattr(dataset, "as_numpy_iterator") else iter(dataset)
-    yield from iterator
+    for episode in dataset:
+        yield _materialize_rlds_tree(episode)
+
+
+def _materialize_rlds_tree(value: Any) -> Any:
+    """Convert TF tensors and nested RLDS step datasets into Python/numpy values."""
+
+    if _is_tf_dataset(value):
+        return [_materialize_rlds_tree(step) for step in value]
+
+    if isinstance(value, Mapping):
+        return {key: _materialize_rlds_tree(child) for key, child in value.items()}
+
+    if hasattr(value, "numpy"):
+        converted = value.numpy()
+        if isinstance(converted, bytes):
+            return converted
+        return np.asarray(converted)
+
+    if isinstance(value, (list, tuple)):
+        return [_materialize_rlds_tree(item) for item in value]
+
+    return value
+
+
+def _is_tf_dataset(value: Any) -> bool:
+    try:
+        import tensorflow as tf
+    except ImportError:
+        return hasattr(value, "element_spec") and type(value).__name__ == "DatasetV2"
+    return isinstance(value, tf.data.Dataset)
 
 
 def _steps(episode: Mapping[str, Any], steps_key: str) -> Iterable[Mapping[str, Any]]:
     value = _get_path(episode, steps_key)
     if value is None:
         raise KeyError(f"RLDS episode is missing steps key: {steps_key}")
+    if isinstance(value, list):
+        return value
+    if _is_tf_dataset(value):
+        return [_materialize_rlds_tree(step) for step in value]
     if hasattr(value, "as_numpy_iterator"):
-        return value.as_numpy_iterator()
+        return (_materialize_rlds_tree(step) for step in value.as_numpy_iterator())
     if isinstance(value, Mapping):
         return _mapping_steps(value)
     return value

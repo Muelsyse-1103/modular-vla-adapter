@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from prismatic_adapter.checkpoint import load_training_checkpoint, save_training_checkpoint
 from prismatic_adapter.components.actions import ActionNormalizer
@@ -82,10 +82,14 @@ class AdapterTrainer:
             self.global_step = int(checkpoint.get("step", 0))
 
     def _loader(self, dataset: Dataset | Iterable[AdapterBatch], shuffle: bool) -> DataLoader:
+        # IterableDataset is a Dataset subclass but must not use DataLoader.shuffle.
+        use_shuffle = shuffle and isinstance(dataset, Dataset) and not isinstance(
+            dataset, IterableDataset
+        )
         return DataLoader(
             dataset,
             batch_size=self.config.trainer.batch_size,
-            shuffle=shuffle if isinstance(dataset, Dataset) else False,
+            shuffle=use_shuffle,
             num_workers=self.config.trainer.num_workers,
             collate_fn=self.collator,
             pin_memory=self.device.type == "cuda",
