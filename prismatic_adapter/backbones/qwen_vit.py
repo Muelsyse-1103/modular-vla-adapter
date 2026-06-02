@@ -124,8 +124,6 @@ class TimmFusedVisionBackbone(nn.Module):
         }
         if overlay is not None:
             kwargs["pretrained_cfg_overlay"] = overlay
-        if cache_dir is not None:
-            kwargs["cache_dir"] = str(cache_dir)
         return timm.create_model(model_id, **kwargs)
 
     def _features(self, model: nn.Module, pixel_values: torch.Tensor) -> torch.Tensor:

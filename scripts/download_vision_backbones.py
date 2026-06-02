@@ -83,7 +83,6 @@ def main() -> None:
                 model_id,
                 pretrained=True,
                 pretrained_cfg_overlay=overlay,
-                cache_dir=str(hf_cache),
                 num_classes=0,
             )
             embed_dim = getattr(model, "embed_dim", "<unknown>")
