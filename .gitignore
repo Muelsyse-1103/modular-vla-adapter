@@ -15,6 +15,7 @@ venv/
 .mypy_cache/
 *.egg
 outputs/
+data/
 LIBERO/
 pretrained_models/**
 !pretrained_models/
