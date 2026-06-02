@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amp-dtype", default="bfloat16", choices=["none", "float16", "bfloat16"])
     parser.add_argument("--vision-pretrained", action="store_true")
     parser.add_argument(
+        "--vision-cache-dir",
+        default="pretrained_models/vision_cache/hf",
+        help="Local HF/TIMM cache directory for DINOv2/SigLIP weights.",
+    )
+    parser.add_argument(
         "--vision-model-ids",
         default=None,
         help="Comma-separated TIMM ids. Defaults to DINOv2 large + SigLIP SO400M.",
@@ -103,6 +108,7 @@ def build_model(args: argparse.Namespace):
         vision_image_sizes=parse_int_csv(args.vision_image_sizes),
         vision_token_align=args.vision_token_align,
         vision_pretrained=args.vision_pretrained,
+        vision_cache_dir=args.vision_cache_dir,
         num_views=args.num_views,
         sequence_config=sequence_cfg,
         torch_dtype=amp_dtype(args.amp_dtype),

@@ -73,10 +73,19 @@ stats = compute_action_stats(raw_samples)
 Example:
 
 ```bash
+python scripts/download_vision_backbones.py \
+  --cache-dir pretrained_models/vision_cache \
+  --hf-endpoint https://hf-mirror.com
+
+# The downloader falls back to:
+# pretrained_models/vision_cache/files/<timm-model-id>/model.safetensors
+# when the mirror does not satisfy the standard Hugging Face cache metadata API.
+
 python scripts/train_qwen35_vit.py \
   --dataset-factory my_project.datasets:build_libero_dataset \
   --dataset-kwargs-json "{\"root\":\"data/libero\",\"name\":\"libero_object_no_noops\"}" \
   --vision-pretrained \
+  --vision-cache-dir pretrained_models/vision_cache/hf \
   --use-lora \
   --batch-size 8 \
   --grad-accumulation-steps 8 \
@@ -134,8 +143,10 @@ python scripts/eval_qwen35_vit_remote.py \
   --qwen-path pretrained_models/Qwen3.5-2B \
   --checkpoint outputs/qwen35_vit_libero_object/latest.pt \
   --action-stats-json path/to/action_stats.json \
+  --vision-pretrained \
+  --vision-cache-dir pretrained_models/vision_cache/hf \
   --task-limit 1
 ```
 
 Use `--vision-pretrained` only after the TIMM vision weights are available in
-the environment cache.
+the project-local vision cache.

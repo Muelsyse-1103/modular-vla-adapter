@@ -108,7 +108,7 @@ flowchart LR
 Default vision towers:
 
 ```python
-VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=224)
+VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=518)
 VisionBackboneSpec("vit_so400m_patch14_siglip_224", image_size=224)
 ```
 
@@ -125,6 +125,7 @@ The training and evaluation scripts expose this through:
 --vision-model-ids
 --vision-image-sizes
 --vision-token-align
+--vision-cache-dir
 ```
 
 ## Local Environment
@@ -226,6 +227,29 @@ CLOSE
 
 ## Qwen3.5 + DINOv2/SigLIP Evaluation
 
+Download the default DINOv2 and SigLIP TIMM weights from the Hugging Face
+mirror into the project-local pretrained model cache:
+
+```powershell
+.\.conda\python.exe scripts\download_vision_backbones.py `
+  --cache-dir pretrained_models\vision_cache `
+  --hf-endpoint https://hf-mirror.com
+```
+
+If the standard Hugging Face cache metadata request fails, the downloader falls
+back to direct mirror `resolve/main/model.safetensors` downloads and stores the
+files under:
+
+```text
+pretrained_models/vision_cache/files/<timm-model-id>/model.safetensors
+```
+
+The model scripts use this cache by default through:
+
+```powershell
+--vision-cache-dir pretrained_models\vision_cache\hf
+```
+
 After a checkpoint exists, connect the model process to a running environment
 server:
 
@@ -235,11 +259,13 @@ server:
   --qwen-path pretrained_models\Qwen3.5-2B `
   --checkpoint outputs\qwen35_vit_libero_object\latest.pt `
   --action-stats-json path\to\action_stats.json `
+  --vision-pretrained `
+  --vision-cache-dir pretrained_models\vision_cache\hf `
   --task-limit 1
 ```
 
 Use `--vision-pretrained` when DINOv2/SigLIP TIMM weights are already available
-or can be downloaded into the local cache.
+in the local cache.
 
 ## Training Entry
 
@@ -252,6 +278,7 @@ storage format:
   --dataset-kwargs-json "{\"root\":\"data/libero\"}" `
   --qwen-path pretrained_models\Qwen3.5-2B `
   --vision-pretrained `
+  --vision-cache-dir pretrained_models\vision_cache\hf `
   --use-lora `
   --output-dir outputs\qwen35_vit_libero_object
 ```
@@ -275,6 +302,7 @@ Verified in the project-local `.conda` environment:
 - ruff: passed
 - Qwen tokenizer import/load: passed
 - TIMM import: passed
+- DINOv2/SigLIP cache path support: implemented
 - LIBERO benchmark task listing: passed
 - LIBERO reset with offscreen render env: passed
 - LIBERO ZMQ server `HELLO/LIST_TASKS/RESET/STEP/CLOSE`: passed

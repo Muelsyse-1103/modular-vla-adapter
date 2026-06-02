@@ -60,7 +60,7 @@ The concrete Qwen example uses two TIMM ViT towers by default:
 
 ```python
 DEFAULT_VISION_BACKBONE_SPECS = (
-    VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=224),
+    VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=518),
     VisionBackboneSpec("vit_so400m_patch14_siglip_224", image_size=224),
 )
 ```
@@ -96,8 +96,9 @@ Training and eval scripts expose:
 
 ```bash
 --vision-model-ids vit_large_patch14_reg4_dinov2.lvd142m,vit_so400m_patch14_siglip_224
---vision-image-sizes 224,224
+--vision-image-sizes 518,224
 --vision-token-align interpolate
+--vision-cache-dir pretrained_models/vision_cache/hf
 ```
 
 ## Replacement Contract

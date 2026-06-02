@@ -37,7 +37,7 @@ class VisionBackboneSpec:
 
 
 DEFAULT_VISION_BACKBONE_SPECS = (
-    VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=224),
+    VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=518),
     VisionBackboneSpec("vit_so400m_patch14_siglip_224", image_size=224),
 )
 
@@ -66,6 +66,8 @@ class TimmFusedVisionBackbone(nn.Module):
         pretrained: bool = True,
         num_views: int = 1,
         token_align: str = "interpolate",
+        cache_dir: str | Path | None = None,
+        prefer_hf_hub: bool = True,
     ) -> None:
         super().__init__()
         try:
@@ -84,13 +86,47 @@ class TimmFusedVisionBackbone(nn.Module):
         self.model_ids = tuple(spec.model_id for spec in self.specs)
         self.num_views = num_views
         self.token_align = token_align
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.models = nn.ModuleList(
             [
-                timm.create_model(spec.model_id, pretrained=pretrained, num_classes=0)
+                self._create_timm_model(
+                    timm=timm,
+                    model_id=spec.model_id,
+                    pretrained=pretrained,
+                    cache_dir=self.cache_dir,
+                    prefer_hf_hub=prefer_hf_hub,
+                )
                 for spec in self.specs
             ]
         )
         self.embed_dim = sum(int(getattr(model, "embed_dim")) for model in self.models)
+
+    @staticmethod
+    def _create_timm_model(
+        timm: Any,
+        model_id: str,
+        pretrained: bool,
+        cache_dir: Path | None,
+        prefer_hf_hub: bool,
+    ) -> nn.Module:
+        overlay = None
+        if pretrained and prefer_hf_hub and hasattr(timm, "models"):
+            local_file = _find_local_vision_weight(model_id=model_id, cache_dir=cache_dir)
+            if local_file is not None:
+                overlay = {"source": "", "file": str(local_file), "url": ""}
+            else:
+                pretrained_cfg = timm.models.get_pretrained_cfg(model_id)
+                if getattr(pretrained_cfg, "hf_hub_id", None):
+                    overlay = {"source": "hf-hub", "url": ""}
+        kwargs: dict[str, Any] = {
+            "pretrained": pretrained,
+            "num_classes": 0,
+        }
+        if overlay is not None:
+            kwargs["pretrained_cfg_overlay"] = overlay
+        if cache_dir is not None:
+            kwargs["cache_dir"] = str(cache_dir)
+        return timm.create_model(model_id, **kwargs)
 
     def _features(self, model: nn.Module, pixel_values: torch.Tensor) -> torch.Tensor:
         if hasattr(model, "forward_features"):
@@ -186,6 +222,8 @@ class QwenTimmVLAAdapter(BackboneAdapter):
         vision_image_sizes: Sequence[int] | None = None,
         vision_token_align: str = "interpolate",
         vision_pretrained: bool = True,
+        vision_cache_dir: str | Path | None = None,
+        vision_prefer_hf_hub: bool = True,
         num_views: int = 2,
         sequence_config: SequenceConfig | None = None,
         torch_dtype: torch.dtype | None = torch.bfloat16,
@@ -214,6 +252,8 @@ class QwenTimmVLAAdapter(BackboneAdapter):
             pretrained=vision_pretrained,
             num_views=num_views,
             token_align=vision_token_align,
+            cache_dir=vision_cache_dir,
+            prefer_hf_hub=vision_prefer_hf_hub,
         )
         return cls(
             language_model=language_model,
@@ -306,6 +346,22 @@ def _resolve_vision_specs(
         VisionBackboneSpec(model_id=model_id, image_size=int(image_size))
         for model_id, image_size in zip(ids, image_sizes)
     )
+
+
+def _safe_weight_dir_name(model_id: str) -> str:
+    return model_id.replace("/", "--")
+
+
+def _find_local_vision_weight(model_id: str, cache_dir: Path | None) -> Path | None:
+    if cache_dir is None:
+        return None
+    safe_name = _safe_weight_dir_name(model_id)
+    roots = (cache_dir, cache_dir.parent)
+    for root in roots:
+        candidate = root / "files" / safe_name / "model.safetensors"
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _align_token_count(tokens: torch.Tensor, target: int) -> torch.Tensor:

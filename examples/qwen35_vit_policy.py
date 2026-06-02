@@ -18,6 +18,7 @@ def build_qwen35_vit_policy():
     backbone = QwenTimmVLAAdapter.from_pretrained(
         qwen_path="pretrained_models/Qwen3.5-2B",
         vision_pretrained=True,
+        vision_cache_dir="pretrained_models/vision_cache/hf",
         num_views=2,
         torch_dtype=torch.bfloat16,
     )
