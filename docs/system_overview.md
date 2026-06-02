@@ -52,7 +52,7 @@ prismatic_adapter/
 |-- backbones/           # adapter implementation internals
 |-- conditioning/        # hidden-state selection/projection/compression
 |-- action_heads/        # continuous action decoder
-|-- datasets/            # AdapterBatch and dataset adapters
+|-- datasets/            # AdapterBatch, LIBERO sample/HDF5 dataset adapters
 |-- training/            # trainer, optimizer, scheduler, LoRA, logging
 |-- runtime/             # inference/checkpoint helpers
 |-- config.py            # adapter configuration
@@ -269,13 +269,22 @@ in the local cache.
 
 ## Training Entry
 
-Training uses a dataset factory so the framework stays independent of one
-storage format:
+Training can use either an external dataset factory or the built-in LIBERO HDF5
+factory. For LIBERO HDF5 demonstrations, first prepare action stats:
+
+```powershell
+.\.conda\python.exe scripts\prepare_libero_hdf5.py `
+  --root data\libero `
+  --output-json outputs\libero_action_stats.json `
+  --sample-check
+```
+
+Then start training:
 
 ```powershell
 .\.conda\python.exe scripts\train_qwen35_vit.py `
-  --dataset-factory my_project.datasets:build_libero_dataset `
-  --dataset-kwargs-json "{\"root\":\"data/libero\"}" `
+  --libero-hdf5-root data\libero `
+  --action-stats-json outputs\libero_action_stats.json `
   --qwen-path pretrained_models\Qwen3.5-2B `
   --vision-pretrained `
   --vision-cache-dir pretrained_models\vision_cache\hf `
@@ -292,7 +301,15 @@ train_dataset
 ```
 
 Each item should be an `AdapterBatch`. For LIBERO-style records, use
-`LiberoSampleAdapter` from `prismatic_adapter.datasets`.
+`LiberoSampleAdapter` or `LiberoHdf5Dataset` from `prismatic_adapter.datasets`.
+
+Fine-grained train/freeze switches are exposed by `TrainableConfig` and the
+training CLI:
+
+```text
+language model | vision backbone | vision projector | action queries
+conditioning | action head | proprio projector
+```
 
 ## Current Verification Status
 

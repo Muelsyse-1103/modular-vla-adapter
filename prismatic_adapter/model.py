@@ -67,14 +67,34 @@ class PrismaticAdapterPolicy(nn.Module):
         self.configure_trainable_parameters()
 
     def configure_trainable_parameters(self) -> None:
-        self.backbone.requires_grad_(self.config.train_backbone)
+        trainable = self.config.resolved_trainable()
+        self.requires_grad_(False)
+        found_language = self._set_backbone_module_trainable(
+            "language_model",
+            trainable.language_model,
+        )
+        found_vision = self._set_backbone_module_trainable(
+            "vision_backbone",
+            trainable.vision_backbone,
+        )
+        if not found_language and not found_vision and (
+            trainable.language_model or trainable.vision_backbone
+        ):
+            self.backbone.requires_grad_(True)
         for module in self.backbone.adapter_modules():
-            module.requires_grad_(self.config.train_policy)
-        self.action_queries.requires_grad_(self.config.train_action_queries)
-        self.condition_projector.requires_grad_(self.config.train_policy)
-        self.action_head.requires_grad_(self.config.train_policy)
+            module.requires_grad_(trainable.vision_projector)
+        self.action_queries.requires_grad_(trainable.action_queries)
+        self.condition_projector.requires_grad_(trainable.conditioning)
+        self.action_head.requires_grad_(trainable.action_head)
         if self.proprio_projector is not None:
-            self.proprio_projector.requires_grad_(self.config.train_policy)
+            self.proprio_projector.requires_grad_(trainable.proprio_projector)
+
+    def _set_backbone_module_trainable(self, name: str, trainable: bool) -> bool:
+        module = getattr(self.backbone, name, None)
+        if module is not None:
+            module.requires_grad_(trainable)
+            return True
+        return False
 
     def forward(self, batch: AdapterBatch) -> torch.Tensor:
         backbone_output = self.backbone.forward_with_action_queries(batch, self.action_queries)

@@ -78,6 +78,19 @@ class ConditioningConfig:
 
 
 @dataclass(frozen=True)
+class TrainableConfig:
+    """Fine-grained train/freeze switches for adapter experiments."""
+
+    language_model: bool = False
+    vision_backbone: bool = False
+    vision_projector: bool = True
+    action_queries: bool = True
+    conditioning: bool = True
+    action_head: bool = True
+    proprio_projector: bool = True
+
+
+@dataclass(frozen=True)
 class AdapterConfig:
     """Top-level VLA adapter configuration."""
 
@@ -87,8 +100,22 @@ class AdapterConfig:
     train_backbone: bool = False
     train_action_queries: bool = True
     train_policy: bool = True
+    trainable: TrainableConfig | None = None
 
     def validate(self) -> None:
         self.sequence.validate()
         self.policy.validate()
         self.conditioning.validate()
+
+    def resolved_trainable(self) -> TrainableConfig:
+        if self.trainable is not None:
+            return self.trainable
+        return TrainableConfig(
+            language_model=self.train_backbone,
+            vision_backbone=self.train_backbone,
+            vision_projector=self.train_policy,
+            action_queries=self.train_action_queries,
+            conditioning=self.train_policy,
+            action_head=self.train_policy,
+            proprio_projector=self.train_policy,
+        )

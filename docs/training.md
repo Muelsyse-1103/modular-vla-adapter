@@ -82,8 +82,8 @@ python scripts/download_vision_backbones.py \
 # when the mirror does not satisfy the standard Hugging Face cache metadata API.
 
 python scripts/train_qwen35_vit.py \
-  --dataset-factory my_project.datasets:build_libero_dataset \
-  --dataset-kwargs-json "{\"root\":\"data/libero\",\"name\":\"libero_object_no_noops\"}" \
+  --libero-hdf5-root data/libero \
+  --action-stats-json outputs/libero_action_stats.json \
   --vision-pretrained \
   --vision-cache-dir pretrained_models/vision_cache/hf \
   --use-lora \
@@ -99,6 +99,76 @@ The dataset factory can return:
 train_dataset
 (train_dataset, val_dataset)
 {"train": train_dataset, "val": val_dataset}
+```
+
+## Built-in LIBERO HDF5 Dataset
+
+If your LIBERO demonstrations are `.hdf5` or `.h5` files, first scan them and
+write action normalization stats:
+
+```bash
+python scripts/prepare_libero_hdf5.py \
+  --root data/libero \
+  --output-json outputs/libero_action_stats.json \
+  --sample-check
+```
+
+Then train with the built-in factory:
+
+```bash
+python scripts/train_qwen35_vit.py \
+  --libero-hdf5-root data/libero \
+  --libero-val-ratio 0.02 \
+  --action-stats-json outputs/libero_action_stats.json \
+  --qwen-path pretrained_models/Qwen3.5-2B \
+  --vision-pretrained \
+  --vision-cache-dir pretrained_models/vision_cache/hf \
+  --use-lora \
+  --lora-rank 64 \
+  --batch-size 8 \
+  --grad-accumulation-steps 8 \
+  --max-steps 100000 \
+  --output-dir outputs/qwen35_vit_libero_object
+```
+
+The same flow is captured in:
+
+```text
+configs/train_libero_hdf5_qwen35_vit.example.ps1
+```
+
+Common field overrides:
+
+```bash
+--libero-action-key actions
+--libero-image-keys image_primary,image_wrist
+--libero-primary-image-keys obs/agentview_rgb,obs/agentview_image
+--libero-wrist-image-keys obs/eye_in_hand_rgb,obs/robot0_eye_in_hand_rgb
+--libero-proprio-keys obs/ee_states,obs/gripper_states
+--libero-fallback-instruction "pick up the object"
+```
+
+Train/freeze switches:
+
+```bash
+--train-language-model
+--train-vision-backbone
+--train-vision-projector / --no-train-vision-projector
+--train-action-queries / --no-train-action-queries
+--train-conditioning / --no-train-conditioning
+--train-action-head / --no-train-action-head
+--train-proprio-projector / --no-train-proprio-projector
+```
+
+LoRA switches:
+
+```bash
+--use-lora
+--lora-target language_model
+--lora-rank 64
+--lora-alpha 128
+--lora-dropout 0.05
+--lora-target-modules q_proj,k_proj,v_proj,o_proj
 ```
 
 ## Action Normalization

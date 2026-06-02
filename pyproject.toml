@@ -19,6 +19,9 @@ runtime = [
     "numpy>=1.24",
     "pyzmq>=25",
 ]
+data = [
+    "h5py>=3.10",
+]
 hf = [
     "transformers>=4.40",
     "huggingface-hub>=0.23",
