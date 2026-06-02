@@ -50,9 +50,7 @@ class PaddedBatchCollator:
         attention_mask = self._pad_1d([item.attention_mask for item in items], 0)
         action_mask = self._pad_1d([item.action_mask for item in items], False)
 
-        pixel_values = [item.pixel_values for item in items]
-        if all(isinstance(value, torch.Tensor) for value in pixel_values):
-            pixel_values = torch.stack(pixel_values, dim=0)
+        pixel_values = _collate_nested([item.pixel_values for item in items])
 
         actions = None
         if all(item.actions is not None for item in items):
@@ -76,3 +74,14 @@ class PaddedBatchCollator:
             proprio=proprio,
             metadata={"items": [item.metadata for item in items]},
         )
+
+
+def _collate_nested(values: Sequence[Any]) -> Any:
+    if all(isinstance(value, torch.Tensor) for value in values):
+        return torch.stack(values, dim=0)
+    if all(isinstance(value, dict) for value in values):
+        keys = tuple(values[0].keys())
+        if not all(tuple(value.keys()) == keys for value in values):
+            return list(values)
+        return {key: _collate_nested([value[key] for value in values]) for key in keys}
+    return list(values)

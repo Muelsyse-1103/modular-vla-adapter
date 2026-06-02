@@ -6,10 +6,12 @@ LIBERO evaluation, and training.
 
 ## Big Picture
 
-The system is split into two major processes:
+The system is split into two major processes and one shared adapter package:
 
-- **Model / training process**: owns the VLA adapter, Qwen3.5, DINOv2/SigLIP
-  vision towers, training, rollout policy, and evaluation runner.
+- **Adapter package**: owns processors, model adapters, ActionQuery,
+  conditioning, Bridge action heads, datasets, and training.
+- **Model / rollout process**: owns a concrete checkpoint, rollout policy, and
+  evaluation runner.
 - **Environment process**: owns simulator dependencies such as LIBERO,
   robosuite, MuJoCo, task reset/step/render, and success checks.
 
@@ -48,13 +50,16 @@ flowchart TB
 
 ```text
 prismatic_adapter/
-|-- adapters/            # model-specific adapters, including Qwen + ViT
-|-- backbones/           # adapter implementation internals
-|-- conditioning/        # hidden-state selection/projection/compression
+|-- processors/          # raw sample + tokenizer/chat template -> AdapterBatch
+|-- model_adapters/      # preferred namespace for Qwen+ViT, MiniCPM-V, custom VLMs
+|-- adapters/            # compatibility namespace for older imports
+|-- backbones/           # compatibility/internal implementation namespace
+|-- components/          # ActionQuery, conditioning, prompt/action utilities
 |-- action_heads/        # continuous action decoder
-|-- datasets/            # AdapterBatch, LIBERO sample/HDF5 dataset adapters
+|-- datasets/            # LIBERO sample/HDF5 dataset adapters
 |-- training/            # trainer, optimizer, scheduler, LoRA, logging
 |-- runtime/             # inference/checkpoint helpers
+|-- config_loader.py     # YAML -> argparse defaults
 |-- config.py            # adapter configuration
 |-- sequence.py          # vision/text/action-query token layout
 `-- types.py             # shared data containers
@@ -283,6 +288,7 @@ Then start training:
 
 ```powershell
 .\.conda\python.exe scripts\train_qwen35_vit.py `
+  --config configs\train_libero_qwen35_vit.example.yaml `
   --libero-hdf5-root data\libero `
   --action-stats-json outputs\libero_action_stats.json `
   --qwen-path pretrained_models\Qwen3.5-2B `
@@ -290,6 +296,17 @@ Then start training:
   --vision-cache-dir pretrained_models\vision_cache\hf `
   --use-lora `
   --output-dir outputs\qwen35_vit_libero_object
+```
+
+MiniCPM-V uses the same trainer and Bridge policy through a different processor
+and model adapter:
+
+```powershell
+.\.conda\python.exe scripts\train_minicpm_v.py `
+  --config configs\train_libero_minicpm_v.example.yaml `
+  --libero-hdf5-root data\libero `
+  --max-steps 10 `
+  --output-dir outputs\minicpm_v_smoke
 ```
 
 The factory may return:
@@ -313,9 +330,10 @@ conditioning | action head | proprio projector
 
 ## Current Verification Status
 
-Verified in the project-local `.conda` environment:
+Verified in the project-local `.conda` environment before the latest framework
+cleanup:
 
-- unit tests: `13 passed`
+- unit tests: passed
 - ruff: passed
 - Qwen tokenizer import/load: passed
 - TIMM import: passed
@@ -326,6 +344,5 @@ Verified in the project-local `.conda` environment:
 
 Remaining for full experiment reproduction:
 
-- obtain real LIBERO demonstration `.hdf5/.h5` data for training
 - train or load an adapter checkpoint
 - run full Qwen3.5 + DINOv2/SigLIP evaluation against LIBERO tasks

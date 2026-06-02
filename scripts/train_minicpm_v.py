@@ -1,35 +1,32 @@
-"""Train the Qwen3.5 + fused ViT adapter policy.
-
-The script expects a dataset factory so the framework stays independent of
-RLDS/LIBERO/CALVIN storage details.
-
-Dataset factory contract:
-    factory(**kwargs) -> Dataset | (train_dataset, val_dataset) | {"train": ..., "val": ...}
-
-Each dataset item should be an `AdapterBatch`; use `SampleAdapter` wrappers for
-native RLDS/LIBERO records.
-"""
+"""Train a MiniCPM-V adapter policy on LIBERO HDF5 data."""
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import torch
+from torch.utils.data import Subset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from prismatic_adapter import AdapterConfig, ConditioningConfig, PolicyConfig, SequenceConfig
+from prismatic_adapter.components.actions import ActionNormalizer, ActionStats
 from prismatic_adapter.config import TrainableConfig
 from prismatic_adapter.config_loader import load_yaml_defaults
-from prismatic_adapter.adapters import QwenTimmVLAAdapter
-from prismatic_adapter.components.actions import ActionNormalizer, ActionStats
 from prismatic_adapter.data import PaddedBatchCollator
+from prismatic_adapter.datasets.libero_hdf5 import (
+    DEFAULT_PRIMARY_IMAGE_KEYS,
+    DEFAULT_PROPRIO_KEYS,
+    DEFAULT_WRIST_IMAGE_KEYS,
+    LiberoHdf5Config,
+    LiberoHdf5Dataset,
+)
 from prismatic_adapter.factory import build_policy
+from prismatic_adapter.model_adapters import MiniCPMVLAAdapter
+from prismatic_adapter.processors import MiniCPMProcessorConfig, MiniCPMVBatchProcessor
 from prismatic_adapter.training.config import (
     CheckpointConfig,
     LoggingConfig,
@@ -43,10 +40,16 @@ from prismatic_adapter.training.optim import apply_lora, count_trainable_paramet
 from prismatic_adapter.training.trainer import AdapterTrainer
 
 
-def load_object(path: str):
-    module_name, object_name = path.split(":", maxsplit=1)
-    module = importlib.import_module(module_name)
-    return getattr(module, object_name)
+def parse_csv(value: str | None) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def parse_lora_target_modules(value: str):
+    if value == "all-linear":
+        return value
+    return list(parse_csv(value) or ())
 
 
 def load_action_normalizer(path: str | None) -> ActionNormalizer | None:
@@ -62,48 +65,14 @@ def load_action_normalizer(path: str | None) -> ActionNormalizer | None:
     return ActionNormalizer(stats)
 
 
-def parse_csv(value: str | None) -> tuple[str, ...] | None:
-    if value is None:
-        return None
-    return tuple(item.strip() for item in value.split(",") if item.strip())
-
-
-def parse_int_csv(value: str | None) -> tuple[int, ...] | None:
-    parsed = parse_csv(value)
-    if parsed is None:
-        return None
-    return tuple(int(item) for item in parsed)
-
-
-def parse_dataset_factory(factory_path: str, kwargs_json: str | None):
-    factory = load_object(factory_path)
-    kwargs: dict[str, Any] = {}
-    if kwargs_json is not None:
-        kwargs = json.loads(kwargs_json)
-    result = factory(**kwargs)
-    if isinstance(result, dict):
-        return result["train"], result.get("val")
-    if isinstance(result, tuple):
-        return result[0], result[1] if len(result) > 1 else None
-    return result, None
-
-
-def parse_lora_target_modules(value: str):
-    if value == "all-linear":
-        return value
-    return list(parse_csv(value) or ())
-
-
 def parse_args() -> argparse.Namespace:
     config_parser = argparse.ArgumentParser(add_help=False)
     config_parser.add_argument("--config", default=None)
     initial, remaining = config_parser.parse_known_args()
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default=None, help="YAML config file. CLI values override it.")
-    parser.add_argument("--dataset-factory", default=None, help="Import path such as my_data:build_dataset")
-    parser.add_argument("--dataset-kwargs-json", default=None, help="JSON object passed to dataset factory")
-    parser.add_argument("--libero-hdf5-root", default=None, help="Use the built-in LIBERO HDF5 dataset factory.")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--libero-hdf5-root", required=False)
     parser.add_argument("--libero-val-ratio", type=float, default=0.0)
     parser.add_argument("--libero-action-key", default="actions")
     parser.add_argument("--libero-image-keys", default="image_primary,image_wrist")
@@ -114,59 +83,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--libero-sample-stride", type=int, default=1)
     parser.add_argument("--libero-frame-stride", type=int, default=1)
     parser.add_argument("--libero-max-episodes", type=int, default=None)
-    parser.add_argument("--write-action-stats-json", default=None)
-    parser.add_argument("--qwen-path", default="pretrained_models/Qwen3.5-2B")
-    parser.add_argument("--vision-pretrained", action="store_true", help="Load pretrained TIMM ViT weights")
-    parser.add_argument(
-        "--vision-cache-dir",
-        default="pretrained_models/vision_cache/hf",
-        help="Local HF/TIMM cache directory for DINOv2/SigLIP weights.",
-    )
-    parser.add_argument(
-        "--vision-model-ids",
-        default=None,
-        help="Comma-separated TIMM ids. Defaults to DINOv2 large + SigLIP SO400M.",
-    )
-    parser.add_argument(
-        "--vision-image-sizes",
-        default=None,
-        help="Comma-separated input sizes matching --vision-model-ids, e.g. 224,224.",
-    )
-    parser.add_argument(
-        "--vision-token-align",
-        default="interpolate",
-        choices=["interpolate", "truncate", "error"],
-        help="How to align DINOv2/SigLIP patch-token counts before fusion.",
-    )
-    parser.add_argument("--num-views", type=int, default=2)
-    parser.add_argument("--image-size", type=int, default=224)
-    parser.add_argument("--pad-token-id", type=int, default=0)
-    parser.add_argument("--output-dir", default="outputs/qwen35_vit")
+    parser.add_argument("--model-path", default="pretrained_models/MiniCPM-V-4.6")
+    parser.add_argument("--downsample-mode", default="16x", choices=["4x", "16x"])
+    parser.add_argument("--max-slice-nums", type=int, default=1)
+    parser.add_argument("--action-stats-json", default=None)
+    parser.add_argument("--output-dir", default="outputs/minicpm_v_libero")
     parser.add_argument("--max-steps", type=int, default=100_000)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--grad-accumulation-steps", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--grad-accumulation-steps", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=2e-4)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--save-every-steps", type=int, default=10_000)
     parser.add_argument("--log-every-steps", type=int, default=10)
     parser.add_argument("--validate-every-steps", type=int, default=0)
     parser.add_argument("--resume-path", default=None)
-    parser.add_argument("--action-stats-json", default=None)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--amp-dtype", default="bfloat16", choices=["none", "float16", "bfloat16"])
-    parser.add_argument("--policy-hidden-size", type=int, default=1024)
+    parser.add_argument("--policy-hidden-size", type=int, default=512)
     parser.add_argument("--action-query-tokens", type=int, default=64)
     parser.add_argument("--action-dim", type=int, default=7)
     parser.add_argument("--action-horizon", type=int, default=8)
     parser.add_argument("--proprio-dim", type=int, default=8)
-    parser.add_argument("--raw-token-budget", type=int, default=512)
+    parser.add_argument("--raw-token-budget", type=int, default=256)
     parser.add_argument("--train-language-model", action="store_true")
     parser.add_argument("--train-vision-backbone", action="store_true")
-    parser.add_argument(
-        "--train-vision-projector",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-    )
+    parser.add_argument("--train-vision-projector", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--train-action-queries", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--train-conditioning", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--train-action-head", action=argparse.BooleanOptionalAction, default=True)
@@ -178,59 +119,66 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-dropout", type=float, default=0.0)
     parser.add_argument("--lora-target-modules", default="all-linear")
     parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--wandb-project", default="vla_adapter_qwen35_vit")
+    parser.add_argument("--wandb-project", default="vla_adapter_minicpm_v")
     parser.add_argument("--wandb-mode", default="offline", choices=["online", "offline", "disabled"])
     defaults = load_yaml_defaults(initial.config)
     defaults["config"] = initial.config
-    if defaults:
-        parser.set_defaults(**defaults)
+    parser.set_defaults(**defaults)
     return parser.parse_args(remaining)
 
 
-def parse_dataset(args: argparse.Namespace):
-    if args.libero_hdf5_root is not None:
-        from prismatic_adapter.datasets.libero_hdf5 import build_libero_hdf5_dataset
+def build_dataset(args: argparse.Namespace):
+    from transformers import AutoProcessor
 
-        result = build_libero_hdf5_dataset(
-            root=args.libero_hdf5_root,
-            tokenizer_path=args.qwen_path,
-            val_ratio=args.libero_val_ratio,
-            write_action_stats_json=args.write_action_stats_json,
-            action_key=args.libero_action_key,
-            primary_image_keys=parse_csv(args.libero_primary_image_keys),
-            wrist_image_keys=parse_csv(args.libero_wrist_image_keys),
-            proprio_keys=parse_csv(args.libero_proprio_keys),
+    processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
+    tokenizer = getattr(processor, "tokenizer", processor)
+    if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token", None):
+        tokenizer.pad_token = tokenizer.eos_token
+    adapter = MiniCPMVBatchProcessor(
+        processor=processor,
+        config=MiniCPMProcessorConfig(
             image_keys=parse_csv(args.libero_image_keys) or ("image_primary", "image_wrist"),
-            image_size=args.image_size,
-            action_horizon=args.action_horizon,
             action_query_tokens=args.action_query_tokens,
+            downsample_mode=args.downsample_mode,
+            max_slice_nums=args.max_slice_nums,
+        ),
+    )
+    dataset = LiberoHdf5Dataset(
+        LiberoHdf5Config(
+            root=args.libero_hdf5_root,
+            action_key=args.libero_action_key,
+            primary_image_keys=parse_csv(args.libero_primary_image_keys) or DEFAULT_PRIMARY_IMAGE_KEYS,
+            wrist_image_keys=parse_csv(args.libero_wrist_image_keys) or DEFAULT_WRIST_IMAGE_KEYS,
+            proprio_keys=parse_csv(args.libero_proprio_keys) or DEFAULT_PROPRIO_KEYS,
             fallback_instruction=args.libero_fallback_instruction,
-            sample_stride=args.libero_sample_stride,
+            action_horizon=args.action_horizon,
             frame_stride=args.libero_frame_stride,
+            sample_stride=args.libero_sample_stride,
             max_episodes=args.libero_max_episodes,
-        )
-        if isinstance(result, tuple):
-            return result[0], result[1]
-        return result, None
-    if args.dataset_factory is None:
-        raise ValueError("provide either --dataset-factory or --libero-hdf5-root")
-    return parse_dataset_factory(args.dataset_factory, args.dataset_kwargs_json)
+        ),
+        adapter=adapter,
+    )
+    if args.libero_val_ratio <= 0:
+        return dataset, None
+    val_size = max(1, int(len(dataset) * args.libero_val_ratio))
+    train_size = len(dataset) - val_size
+    indices = list(range(len(dataset)))
+    return Subset(dataset, indices[:train_size]), Subset(dataset, indices[train_size:])
 
 
 def build_model(args: argparse.Namespace):
     sequence_cfg = SequenceConfig(action_query_tokens=args.action_query_tokens)
-    backbone = QwenTimmVLAAdapter.from_pretrained(
-        qwen_path=args.qwen_path,
-        vision_model_ids=parse_csv(args.vision_model_ids),
-        vision_image_sizes=parse_int_csv(args.vision_image_sizes),
-        vision_token_align=args.vision_token_align,
-        vision_pretrained=args.vision_pretrained,
-        vision_cache_dir=args.vision_cache_dir,
-        num_views=args.num_views,
+    torch_dtype = {
+        "none": "auto",
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+    }[args.amp_dtype]
+    backbone = MiniCPMVLAAdapter.from_pretrained(
+        model_path=args.model_path,
         sequence_config=sequence_cfg,
-        torch_dtype=torch.bfloat16 if args.amp_dtype == "bfloat16" else None,
+        torch_dtype=torch_dtype,
     )
-    adapter_cfg = AdapterConfig(
+    config = AdapterConfig(
         sequence=sequence_cfg,
         conditioning=ConditioningConfig(
             layer_strategy="uniform",
@@ -256,7 +204,7 @@ def build_model(args: argparse.Namespace):
             proprio_projector=args.train_proprio_projector,
         ),
     )
-    model = build_policy(backbone=backbone, config=adapter_cfg, proprio_dim=args.proprio_dim)
+    model = build_policy(backbone=backbone, config=config, proprio_dim=args.proprio_dim)
     if args.use_lora:
         model = apply_lora(
             model,
@@ -300,15 +248,20 @@ def build_training_config(args: argparse.Namespace) -> TrainingConfig:
 
 def main() -> None:
     args = parse_args()
-    train_dataset, val_dataset = parse_dataset(args)
+    if args.libero_hdf5_root is None:
+        raise ValueError("--libero-hdf5-root is required")
+    train_dataset, val_dataset = build_dataset(args)
     model = build_model(args)
+    processor = train_dataset.dataset.adapter.processor if isinstance(train_dataset, Subset) else train_dataset.adapter.processor
+    tokenizer = getattr(processor, "tokenizer", processor)
+    pad_token_id = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None) or 0
     print(f"trainable parameters: {count_trainable_parameters(model):,}")
     trainer = AdapterTrainer(
         model=model,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         config=build_training_config(args),
-        collator=PaddedBatchCollator(pad_token_id=args.pad_token_id),
+        collator=PaddedBatchCollator(pad_token_id=int(pad_token_id)),
         action_normalizer=load_action_normalizer(args.action_stats_json),
     )
     trainer.fit()

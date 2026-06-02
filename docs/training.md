@@ -36,8 +36,9 @@ AdapterBatch(
 ```
 
 Use `SampleAdapter` when your native sample is RLDS/LIBERO/CALVIN-specific.
-The framework deliberately does not decide how to chunk actions or preprocess
-camera images; those choices belong to the dataset adapter.
+Use `processors/` when a model needs a different tokenizer, chat template, image
+processor, or multimodal input dictionary. The dataset owns what a sample means;
+the processor owns how that sample becomes an `AdapterBatch` for one model.
 
 For LIBERO-style records, the built-in adapter expects one Python mapping with:
 
@@ -131,10 +132,37 @@ python scripts/train_qwen35_vit.py \
   --output-dir outputs/qwen35_vit_libero_object
 ```
 
-The same flow is captured in:
+The same flow is captured in YAML:
+
+```bash
+python scripts/train_qwen35_vit.py \
+  --config configs/train_libero_qwen35_vit.example.yaml
+```
+
+and in a PowerShell example:
 
 ```text
 configs/train_libero_hdf5_qwen35_vit.example.ps1
+```
+
+## MiniCPM-V Training Entry
+
+`scripts/train_minicpm_v.py` demonstrates a second model family. It reuses the
+same LIBERO HDF5 dataset, trainer, LoRA path, freezing switches, ActionQuery
+module, conditioning stack, and Bridge action head.
+
+```bash
+python scripts/train_minicpm_v.py \
+  --config configs/train_libero_minicpm_v.example.yaml \
+  --libero-hdf5-root data/libero \
+  --max-steps 1000 \
+  --output-dir outputs/minicpm_v_libero
+```
+
+This entry differs only at the replaceable edge:
+
+```text
+MiniCPMVBatchProcessor -> MiniCPMVLAAdapter -> shared policy/trainer
 ```
 
 Common field overrides:

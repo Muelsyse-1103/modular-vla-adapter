@@ -1,15 +1,10 @@
-"""Compatibility namespace for model-specific adapters.
+"""Preferred public namespace for model-specific VLA adapters."""
 
-Prefer importing new code from `prismatic_adapter.model_adapters`.
-"""
-
-from prismatic_adapter.backbones.hf_prismatic import HuggingFacePrismaticAdapter
-from prismatic_adapter.model_adapters import (
-    BackboneAdapter,
+from prismatic_adapter.model_adapters.base import BackboneAdapter, ModelAdapter
+from prismatic_adapter.model_adapters.minicpm import MiniCPMVLAAdapter
+from prismatic_adapter.model_adapters.qwen_vit import (
     DEFAULT_VISION_BACKBONE_SPECS,
     DEFAULT_VISION_MODEL_IDS,
-    MiniCPMVLAAdapter,
-    ModelAdapter,
     QwenTimmVLAAdapter,
     TimmFusedVisionBackbone,
     VisionBackboneSpec,
@@ -19,7 +14,6 @@ __all__ = [
     "BackboneAdapter",
     "DEFAULT_VISION_BACKBONE_SPECS",
     "DEFAULT_VISION_MODEL_IDS",
-    "HuggingFacePrismaticAdapter",
     "MiniCPMVLAAdapter",
     "ModelAdapter",
     "QwenTimmVLAAdapter",

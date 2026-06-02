@@ -1,0 +1,64 @@
+dataset:
+  libero_hdf5_root: data/libero
+  libero_val_ratio: 0.02
+  action_stats_json: outputs/libero_action_stats.json
+
+libero:
+  action_key: actions
+  image_keys: image_primary,image_wrist
+  primary_image_keys:
+  wrist_image_keys:
+  proprio_keys:
+  fallback_instruction:
+  sample_stride: 1
+  frame_stride: 1
+  max_episodes:
+
+model:
+  model_path: pretrained_models/MiniCPM-V-4.6
+  downsample_mode: 16x
+  max_slice_nums: 1
+
+policy:
+  policy_hidden_size: 512
+  action_query_tokens: 64
+  action_dim: 7
+  action_horizon: 8
+  proprio_dim: 8
+  raw_token_budget: 256
+
+trainable:
+  language_model: false
+  vision_backbone: false
+  vision_projector: false
+  action_queries: true
+  conditioning: true
+  action_head: true
+  proprio_projector: true
+
+lora:
+  use_lora: true
+  target: language_model
+  rank: 32
+  alpha:
+  dropout: 0.0
+  target_modules: all-linear
+
+training:
+  output_dir: outputs/minicpm_v_libero
+  max_steps: 100000
+  batch_size: 1
+  grad_accumulation_steps: 16
+  learning_rate: 0.0002
+  warmup_steps: 0
+  save_every_steps: 10000
+  log_every_steps: 10
+  validate_every_steps: 0
+  resume_path:
+  device: cuda
+  amp_dtype: bfloat16
+
+logging:
+  wandb: false
+  wandb_project: vla_adapter_minicpm_v
+  wandb_mode: offline

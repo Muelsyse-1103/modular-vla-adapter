@@ -11,18 +11,28 @@ from prismatic_adapter.data import PaddedBatchCollator, SampleAdapter
 from prismatic_adapter.factory import build_policy
 from prismatic_adapter.inference import ActionPredictor
 from prismatic_adapter.model import PrismaticAdapterPolicy
+from prismatic_adapter.model_adapters import (
+    MiniCPMVLAAdapter,
+    ModelAdapter,
+    QwenTimmVLAAdapter,
+    VisionBackboneSpec,
+)
 from prismatic_adapter.pipeline import VLAAdapter
 
 __all__ = [
     "AdapterConfig",
     "ActionPredictor",
     "ConditioningConfig",
+    "MiniCPMVLAAdapter",
+    "ModelAdapter",
     "PaddedBatchCollator",
     "PolicyConfig",
     "PrismaticAdapterPolicy",
+    "QwenTimmVLAAdapter",
     "SampleAdapter",
     "SequenceConfig",
     "TrainableConfig",
     "VLAAdapter",
+    "VisionBackboneSpec",
     "build_policy",
 ]

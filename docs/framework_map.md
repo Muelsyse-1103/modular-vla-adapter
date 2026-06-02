@@ -1,118 +1,129 @@
 # VLA Adapter Framework Map
 
-The framework is organized around adapter replacement, not RL rollout. The main
-model path is:
+The project is organized around model replacement. Training, rollout, and the
+environment process are deliberately separate so a new VLM can be adapted
+without rewriting LIBERO communication or the Bridge action policy.
 
 ```mermaid
-flowchart TD
-    OBS["Dataset / Remote Env Observation"] --> BATCH["AdapterBatch"]
-    BATCH --> VISION["DINOv2 + SigLIP Vision Stack"]
-    BATCH --> PROMPT["Qwen Token Embeddings + ActionQuery Mask"]
-    VISION --> FUSE["Token Align + Feature Concat + Vision Projector"]
-    FUSE --> LLM["Qwen3.5 Backbone Adapter"]
-    PROMPT --> LLM
-    LLM --> COND["Conditioning Layer"]
-    COND --> HEAD["Bridge Action Head"]
-    HEAD --> ACT["Action Chunk [B, H, A]"]
+flowchart TB
+    subgraph ADAPT["prismatic_adapter: training and model adaptation"]
+        DATA["datasets<br/>LIBERO/HDF5/raw samples"]
+        PROC["processors<br/>sample + tokenizer/chat template -> AdapterBatch"]
+        MODEL["model_adapters<br/>Qwen+ViT, MiniCPM-V, custom VLM"]
+        CORE["policy core<br/>ActionQuery, conditioning, Bridge head"]
+        TRAIN["training<br/>freeze config, LoRA, trainer, checkpoints"]
+
+        DATA --> PROC
+        PROC --> CORE
+        MODEL --> CORE
+        CORE --> TRAIN
+    end
+
+    subgraph RUNTIME["vla_runtime: rollout/evaluation client"]
+        POLICY["policies<br/>obs -> AdapterBatch -> action chunk"]
+        ROLLOUT["rollouts<br/>action queue + episode loop"]
+        RUNNER["runners<br/>evaluation orchestration"]
+
+        RUNNER --> ROLLOUT
+        ROLLOUT --> POLICY
+    end
+
+    subgraph ENV["env_process: isolated simulator runtime"]
+        ZMQ["clients/zmq_server.py"]
+        BACKEND["backends<br/>fake, LIBERO, custom env"]
+        SIM["simulator deps<br/>LIBERO/robosuite/MuJoCo"]
+
+        ZMQ --> BACKEND
+        BACKEND --> SIM
+    end
+
+    POLICY -- "RESET / STEP / RENDER over ZMQ" --> ZMQ
+    ZMQ -- "obs / reward / success" --> POLICY
+    POLICY -. "same processor contract" .-> PROC
 ```
 
-## Public Package Layout
+## Public Layout
 
 ```text
 prismatic_adapter/
-|-- pipeline.py              # VLAAdapter: complete adapter pipeline
-|-- adapters/                # model-specific public adapters
-|   |-- base.py              # ModelAdapter protocol
-|   |-- qwen_vit.py          # Qwen3.5 + DINOv2/SigLIP ViT example
-|   `-- hf_prismatic.py      # Prismatic/OpenVLA-like HF adapter
-|-- backbones/               # adapter implementation internals
-|   `-- qwen_vit.py          # Qwen + TIMM fused vision implementation
-|-- conditioning/            # hidden-state compatibility layer
-|-- action_heads/            # continuous action heads
-|-- datasets/                # AdapterBatch, SampleAdapter, LIBERO adapter
-|-- training/                # trainer, optimizer, scheduler, LoRA, logging
-|-- runtime/                 # inference and checkpoint helpers
-|-- config.py                # adapter/policy/conditioning configs
-|-- sequence.py              # token insertion and segment extraction
-`-- types.py                 # shared dataclasses
+|-- processors/          # tokenizer/chat-template/image/proprio -> AdapterBatch
+|   |-- standard.py      # simple tokenizer + tensor images, used by Qwen+ViT
+|   `-- minicpm.py       # MiniCPM-V chat template + image processor
+|-- model_adapters/      # preferred public namespace for VLM adapters
+|   |-- base.py          # ModelAdapter / BackboneAdapter protocol
+|   |-- qwen_vit.py      # Qwen3.5 + DINOv2/SigLIP example
+|   `-- minicpm.py       # MiniCPM-V example
+|-- adapters/            # compatibility namespace for older imports
+|-- backbones/           # compatibility/internal implementation namespace
+|-- components/          # ActionQuery, conditioning, prompt/action utilities
+|-- action_heads/        # Bridge continuous action head
+|-- datasets/            # LIBERO sample and HDF5 adapters
+|-- training/            # trainer, optimizer, scheduler, LoRA, logging
+|-- config_loader.py     # YAML -> argparse defaults for scripts
+|-- config.py            # adapter/policy/trainable configs
+|-- sequence.py          # token insertion and segment extraction
+`-- types.py             # AdapterBatch, BackboneOutput, SegmentSlices
 
 vla_runtime/
-|-- env_client.py            # ZMQ client
+|-- env_client.py
 |-- policies/
-|   |-- base.py              # RolloutPolicy protocol
-|   `-- vla_adapter.py       # Remote obs -> AdapterBatch -> action chunk
-|-- rollouts/                # action queue rollout loop
-|-- runners/                 # eval runner
-`-- recorder.py              # metrics / episode JSONL
+|-- rollouts/
+|-- runners/
+`-- recorder.py
 
 env_process/
-|-- protocols.py             # HELLO / LIST_TASKS / RESET / STEP / RENDER / CLOSE
-|-- codecs.py                # numpy observation transport
+|-- protocols.py
+|-- codecs.py
 |-- backends/
-|   |-- fake.py              # smoke-test backend
-|   `-- libero.py            # LIBERO backend skeleton
-`-- clients/zmq_server.py    # environment-side ZMQ REP server
-```
-
-## DINOv2 + SigLIP Vision Stack
-
-The concrete Qwen example uses two TIMM ViT towers by default:
-
-```python
-DEFAULT_VISION_BACKBONE_SPECS = (
-    VisionBackboneSpec("vit_large_patch14_reg4_dinov2.lvd142m", image_size=518),
-    VisionBackboneSpec("vit_so400m_patch14_siglip_224", image_size=224),
-)
-```
-
-The stack is explicit and replaceable:
-
-```text
-image_primary / image_wrist
-        |
-        v
-split views [B, V, C, H, W]
-        |
-        +--> DINOv2 tower  -- patch tokens [B, P1, D1]
-        |
-        `--> SigLIP tower  -- patch tokens [B, P2, D2]
-                  |
-                  v
-        token alignment: interpolate | truncate | error
-                  |
-                  v
-        concat features [B, P, D1 + D2]
-                  |
-                  v
-        trainable vision_projector -> Qwen hidden size
-```
-
-This handles the practical compatibility issue: DINOv2 and SigLIP can have
-different preferred input sizes and different patch-token counts. The adapter
-normalizes that into one `[B, P, hidden]` token stream before inserting it into
-the Qwen sequence.
-
-Training and eval scripts expose:
-
-```bash
---vision-model-ids vit_large_patch14_reg4_dinov2.lvd142m,vit_so400m_patch14_siglip_224
---vision-image-sizes 518,224
---vision-token-align interpolate
---vision-cache-dir pretrained_models/vision_cache/hf
+`-- clients/zmq_server.py
 ```
 
 ## Replacement Contract
 
-To replace the backbone, implement `ModelAdapter.forward_with_action_queries`.
-Everything after that point is model-agnostic.
+To add another VLM, implement two small pieces:
 
-To replace the action head, keep the condition tensor contract:
+1. `processors/<model>.py`
+   Converts raw observations and an instruction into `AdapterBatch`. This is
+   where tokenizer quirks, chat templates, image processors, and special image
+   token layouts belong.
 
-```python
-raw_tokens:          [B, L, R, D]
-action_query_tokens: [B, L, Q, D]
-proprio_token:       [B, 1, D] or None
+2. `model_adapters/<model>.py`
+   Implements `ModelAdapter.forward_with_action_queries(batch, action_queries)`
+   and returns `BackboneOutput(hidden_states, segments, fused_attention_mask)`.
+   Everything after that point is shared by Qwen, MiniCPM, and future models.
+
+The shared policy handles:
+
+- hidden-size projection into the policy dimension;
+- different language-model layer counts through `LayerSelector`;
+- different visual token counts through token compression;
+- train/freeze switches through `TrainableConfig`;
+- optional LoRA through `training.optim.apply_lora`.
+
+## Built-In Examples
+
+```text
+Qwen3.5 + DINOv2/SigLIP
+  StandardBatchProcessor
+  QwenTimmVLAAdapter
+  configs/train_libero_qwen35_vit.example.yaml
+
+MiniCPM-V
+  MiniCPMVBatchProcessor
+  MiniCPMVLAAdapter
+  configs/train_libero_minicpm_v.example.yaml
 ```
 
-To replace a dataset, emit `AdapterBatch` with a valid `action_mask`. The core
-pipeline does not know RLDS, LIBERO, CALVIN, or robot-specific field names.
+The Qwen example owns a fused TIMM vision stack:
+
+```text
+image_primary / image_wrist
+  -> DINOv2 tower + SigLIP tower
+  -> token alignment: interpolate | truncate | error
+  -> vision projector
+  -> Qwen hidden states
+```
+
+The MiniCPM example lets the native MiniCPM processor build multimodal inputs,
+then only appends ActionQuery placeholders and exposes the hidden-state
+segments needed by the Bridge policy.

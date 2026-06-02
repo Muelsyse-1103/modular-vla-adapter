@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 import torch
-import torch.nn.functional as F
 
 from prismatic_adapter.inference import ActionPredictor
+from prismatic_adapter.processors.standard import StandardBatchProcessor, StandardProcessorConfig
 from prismatic_adapter.types import AdapterBatch
 from vla_runtime.policies.base import RolloutPolicy
 
@@ -40,89 +38,40 @@ class ObservationBatchBuilder:
         self.tokenizer = tokenizer
         self.config = config or ObservationBatchConfig()
         self.device = torch.device(device)
-
-    def __call__(self, observation: dict[str, Any], instruction: str) -> AdapterBatch:
-        input_ids, attention_mask, action_mask = self._encode_instruction(instruction)
-        pixel_values = self._prepare_images(observation)
-        proprio = self._prepare_proprio(observation)
-        return AdapterBatch(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            pixel_values=pixel_values,
-            action_mask=action_mask,
-            proprio=proprio,
-            metadata={"instruction": instruction, "image_keys": self.config.image_keys},
-        )
-
-    def _encode_instruction(self, instruction: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        prompt = self.config.prompt_template.format(instruction=instruction)
-        encoded = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            add_special_tokens=self.config.add_special_tokens,
-        )
-        input_ids = _encoded_value(encoded, "input_ids").to(self.device)
-        attention_mask = _encoded_value(encoded, "attention_mask")
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
-        attention_mask = attention_mask.to(self.device)
-
-        placeholder_id = self._placeholder_token_id()
-        placeholders = torch.full(
-            (input_ids.shape[0], self.config.action_query_tokens),
-            placeholder_id,
-            dtype=input_ids.dtype,
+        self.processor = StandardBatchProcessor(
+            tokenizer=tokenizer,
+            config=StandardProcessorConfig(
+                image_keys=self.config.image_keys,
+                image_size=self.config.image_size,
+                prompt_template=self.config.prompt_template,
+                action_query_tokens=self.config.action_query_tokens,
+                placeholder_token_id=self.config.placeholder_token_id,
+                add_special_tokens=self.config.add_special_tokens,
+                image_mean=self.config.image_mean,
+                image_std=self.config.image_std,
+                proprio_key=self.config.proprio_key,
+            ),
             device=self.device,
         )
-        placeholder_attention = torch.ones_like(placeholders)
-        input_ids = torch.cat([input_ids, placeholders], dim=1)
-        attention_mask = torch.cat([attention_mask, placeholder_attention], dim=1)
 
-        action_mask = torch.zeros_like(input_ids, dtype=torch.bool)
-        action_mask[:, -self.config.action_query_tokens :] = True
-        return input_ids, attention_mask, action_mask
-
-    def _placeholder_token_id(self) -> int:
-        if self.config.placeholder_token_id is not None:
-            return int(self.config.placeholder_token_id)
-        for name in ("pad_token_id", "eos_token_id", "unk_token_id"):
-            value = getattr(self.tokenizer, name, None)
-            if value is not None:
-                return int(value)
-        return 0
-
-    def _prepare_images(self, observation: dict[str, Any]) -> torch.Tensor:
-        views = []
-        for key in self.config.image_keys:
-            if key not in observation:
-                raise KeyError(f"observation is missing image key: {key}")
-            views.append(self._prepare_image(observation[key]))
-        return torch.stack(views, dim=1) if len(views) > 1 else views[0]
-
-    def _prepare_image(self, image: Any) -> torch.Tensor:
-        tensor = _as_tensor(image).float()
-        if tensor.ndim != 3:
-            raise ValueError(f"image must have shape HWC or CHW, got {tuple(tensor.shape)}")
-        if tensor.shape[0] != 3:
-            tensor = tensor.permute(2, 0, 1)
-        if tensor.max() > 2.0:
-            tensor = tensor / 255.0
-        tensor = F.interpolate(
-            tensor.unsqueeze(0),
-            size=(self.config.image_size, self.config.image_size),
-            mode="bilinear",
-            align_corners=False,
+    def __call__(self, observation: dict[str, Any], instruction: str) -> AdapterBatch:
+        sample = self.processor(
+            observation,
+            instruction=instruction,
+            metadata={"instruction": instruction, "image_keys": self.config.image_keys},
         )
-        mean = torch.tensor(self.config.image_mean, dtype=tensor.dtype).view(1, 3, 1, 1)
-        std = torch.tensor(self.config.image_std, dtype=tensor.dtype).view(1, 3, 1, 1)
-        tensor = (tensor - mean) / std
-        return tensor.to(self.device)
-
-    def _prepare_proprio(self, observation: dict[str, Any]) -> torch.Tensor | None:
-        if self.config.proprio_key not in observation:
-            return None
-        proprio = _as_tensor(observation[self.config.proprio_key]).float().reshape(1, -1)
-        return proprio.to(self.device)
+        return AdapterBatch(
+            input_ids=sample.input_ids.unsqueeze(0),
+            attention_mask=sample.attention_mask.unsqueeze(0),
+            pixel_values=(
+                sample.pixel_values.unsqueeze(0)
+                if isinstance(sample.pixel_values, torch.Tensor)
+                else sample.pixel_values
+            ),
+            action_mask=sample.action_mask.unsqueeze(0),
+            proprio=sample.proprio.unsqueeze(0) if sample.proprio is not None else None,
+            metadata=sample.metadata,
+        )
 
 
 class VLAAdapterRolloutPolicy(RolloutPolicy):
@@ -155,22 +104,6 @@ class VLAAdapterRolloutPolicy(RolloutPolicy):
         if actions.ndim != 2:
             raise ValueError(f"expected action chunk [H, A], got {tuple(actions.shape)}")
         return actions.tolist()
-
-
-def _encoded_value(encoded: Any, key: str):
-    if isinstance(encoded, dict):
-        return encoded.get(key)
-    return getattr(encoded, key, None)
-
-
-def _as_tensor(value: Any) -> torch.Tensor:
-    if isinstance(value, torch.Tensor):
-        return value.detach().cpu()
-    if isinstance(value, np.ndarray):
-        return torch.from_numpy(value)
-    if isinstance(value, Sequence):
-        return torch.tensor(value)
-    raise TypeError(f"cannot convert {type(value)!r} to tensor")
 
 
 class _maybe_autocast:
