@@ -57,7 +57,7 @@ prismatic_adapter/
 |-- backbones/           # compatibility/internal implementation namespace
 |-- components/          # ActionQuery, conditioning, prompt/action utilities
 |-- action_heads/        # Bridge continuous action head
-|-- datasets/            # LIBERO sample and HDF5 adapters
+|-- datasets/            # LIBERO HDF5 and RLDS storage adapters
 |-- training/            # trainer, optimizer, scheduler, LoRA, logging
 |-- config_loader.py     # YAML -> argparse defaults for scripts
 |-- config.py            # adapter/policy/trainable configs
@@ -112,6 +112,11 @@ MiniCPM-V
   MiniCPMVBatchProcessor
   MiniCPMVLAAdapter
   configs/train_libero_minicpm_v.example.yaml
+
+Data sources
+  LiberoHdf5Dataset
+  RldsTfdsDataset
+  configs/train_rlds_qwen35_vit.example.yaml
 ```
 
 The Qwen example owns a fused TIMM vision stack:

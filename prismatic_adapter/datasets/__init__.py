@@ -15,6 +15,14 @@ from prismatic_adapter.datasets.libero_hdf5 import (
     compute_libero_hdf5_action_stats,
     discover_hdf5_files,
 )
+from prismatic_adapter.datasets.rlds import (
+    RldsConfig,
+    RldsEpisodeDataset,
+    RldsTfdsDataset,
+    build_rlds_tfds_dataset,
+    iter_rlds_action_samples,
+    iter_rlds_samples,
+)
 from prismatic_adapter.types import AdapterBatch
 
 __all__ = [
@@ -25,10 +33,16 @@ __all__ = [
     "LiberoSampleAdapter",
     "LiberoSampleKeys",
     "PaddedBatchCollator",
+    "RldsConfig",
+    "RldsEpisodeDataset",
+    "RldsTfdsDataset",
     "SampleAdapter",
     "build_libero_hdf5_dataset",
+    "build_rlds_tfds_dataset",
     "compute_action_stats",
     "compute_libero_hdf5_action_stats",
     "discover_hdf5_files",
+    "iter_rlds_action_samples",
+    "iter_rlds_samples",
     "save_action_stats",
 ]

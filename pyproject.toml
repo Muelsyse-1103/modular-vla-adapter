@@ -32,6 +32,11 @@ hf = [
     "timm>=0.9",
     "wandb>=0.16",
 ]
+rlds = [
+    "rlds>=0.1",
+    "tensorflow>=2.15",
+    "tensorflow-datasets>=4.9",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.5",

@@ -101,6 +101,12 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=None, help="YAML config file. CLI values override it.")
+    parser.add_argument(
+        "--dataset-format",
+        default="auto",
+        choices=["auto", "factory", "libero_hdf5", "rlds"],
+        help="Select the data input backend. `auto` preserves legacy argument-based selection.",
+    )
     parser.add_argument("--dataset-factory", default=None, help="Import path such as my_data:build_dataset")
     parser.add_argument("--dataset-kwargs-json", default=None, help="JSON object passed to dataset factory")
     parser.add_argument("--libero-hdf5-root", default=None, help="Use the built-in LIBERO HDF5 dataset factory.")
@@ -115,6 +121,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--libero-frame-stride", type=int, default=1)
     parser.add_argument("--libero-max-episodes", type=int, default=None)
     parser.add_argument("--write-action-stats-json", default=None)
+    parser.add_argument("--rlds-tfds-name", default=None, help="TFDS builder name for an RLDS dataset.")
+    parser.add_argument("--rlds-data-dir", default=None)
+    parser.add_argument("--rlds-split", default="train")
+    parser.add_argument("--rlds-val-split", default=None)
+    parser.add_argument("--rlds-shuffle-files", action="store_true")
+    parser.add_argument("--rlds-action-key", default="action")
+    parser.add_argument("--rlds-steps-key", default="steps")
+    parser.add_argument("--rlds-image-keys", default="image_primary,image_wrist")
+    parser.add_argument("--rlds-primary-image-keys", default=None)
+    parser.add_argument("--rlds-wrist-image-keys", default=None)
+    parser.add_argument("--rlds-proprio-keys", default=None)
+    parser.add_argument("--rlds-language-keys", default=None)
+    parser.add_argument("--rlds-fallback-instruction", default=None)
+    parser.add_argument("--rlds-sample-stride", type=int, default=1)
+    parser.add_argument("--rlds-frame-stride", type=int, default=1)
+    parser.add_argument("--rlds-max-episodes", type=int, default=None)
+    parser.add_argument("--rlds-max-steps", type=int, default=None)
     parser.add_argument("--qwen-path", default="pretrained_models/Qwen3.5-2B")
     parser.add_argument("--vision-pretrained", action="store_true", help="Load pretrained TIMM ViT weights")
     parser.add_argument(
@@ -188,7 +211,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def parse_dataset(args: argparse.Namespace):
-    if args.libero_hdf5_root is not None:
+    if args.dataset_format in ("auto", "libero_hdf5") and args.libero_hdf5_root is not None:
         from prismatic_adapter.datasets.libero_hdf5 import build_libero_hdf5_dataset
 
         result = build_libero_hdf5_dataset(
@@ -212,9 +235,69 @@ def parse_dataset(args: argparse.Namespace):
         if isinstance(result, tuple):
             return result[0], result[1]
         return result, None
-    if args.dataset_factory is None:
-        raise ValueError("provide either --dataset-factory or --libero-hdf5-root")
-    return parse_dataset_factory(args.dataset_factory, args.dataset_kwargs_json)
+    if args.dataset_format in ("auto", "rlds") and args.rlds_tfds_name is not None:
+        return build_qwen_rlds_dataset(args)
+    if args.dataset_format in ("auto", "factory") and args.dataset_factory is not None:
+        return parse_dataset_factory(args.dataset_factory, args.dataset_kwargs_json)
+    raise ValueError(
+        "provide a matching data source: --libero-hdf5-root, --rlds-tfds-name, "
+        "or --dataset-factory"
+    )
+
+
+def build_qwen_rlds_dataset(args: argparse.Namespace):
+    from transformers import AutoTokenizer
+
+    from prismatic_adapter.datasets.libero import LiberoAdapterConfig, LiberoSampleAdapter
+    from prismatic_adapter.datasets.rlds import RldsTfdsDataset
+
+    tokenizer = AutoTokenizer.from_pretrained(args.qwen_path, trust_remote_code=True)
+    if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token", None):
+        tokenizer.pad_token = tokenizer.eos_token
+    adapter = LiberoSampleAdapter(
+        tokenizer=tokenizer,
+        config=LiberoAdapterConfig(
+            image_keys=parse_csv(args.rlds_image_keys) or ("image_primary", "image_wrist"),
+            image_size=args.image_size,
+            action_query_tokens=args.action_query_tokens,
+        ),
+    )
+    train_dataset = RldsTfdsDataset(config=_rlds_config(args, args.rlds_split), adapter=adapter)
+    val_dataset = (
+        RldsTfdsDataset(config=_rlds_config(args, args.rlds_val_split), adapter=adapter)
+        if args.rlds_val_split
+        else None
+    )
+    return train_dataset, val_dataset
+
+
+def _rlds_config(args: argparse.Namespace, split: str):
+    from prismatic_adapter.datasets.rlds import (
+        DEFAULT_RLDS_LANGUAGE_KEYS,
+        DEFAULT_RLDS_PRIMARY_IMAGE_KEYS,
+        DEFAULT_RLDS_PROPRIO_KEYS,
+        DEFAULT_RLDS_WRIST_IMAGE_KEYS,
+        RldsConfig,
+    )
+
+    return RldsConfig(
+        tfds_name=args.rlds_tfds_name,
+        data_dir=args.rlds_data_dir,
+        split=split,
+        shuffle_files=args.rlds_shuffle_files,
+        action_key=args.rlds_action_key,
+        steps_key=args.rlds_steps_key,
+        primary_image_keys=parse_csv(args.rlds_primary_image_keys) or DEFAULT_RLDS_PRIMARY_IMAGE_KEYS,
+        wrist_image_keys=parse_csv(args.rlds_wrist_image_keys) or DEFAULT_RLDS_WRIST_IMAGE_KEYS,
+        proprio_keys=parse_csv(args.rlds_proprio_keys) or DEFAULT_RLDS_PROPRIO_KEYS,
+        language_keys=parse_csv(args.rlds_language_keys) or DEFAULT_RLDS_LANGUAGE_KEYS,
+        fallback_instruction=args.rlds_fallback_instruction,
+        action_horizon=args.action_horizon,
+        frame_stride=args.rlds_frame_stride,
+        sample_stride=args.rlds_sample_stride,
+        max_episodes=args.rlds_max_episodes,
+        max_steps=args.rlds_max_steps,
+    )
 
 
 def build_model(args: argparse.Namespace):

@@ -1,9 +1,25 @@
 dataset:
-  dataset_format: libero_hdf5
-  libero_hdf5_root: data/libero
-  action_stats_json: outputs/libero_action_stats.json
-  libero_val_ratio: 0.02
-  libero_sample_stride: 1
+  dataset_format: rlds
+  action_stats_json:
+
+rlds:
+  tfds_name: bridge
+  data_dir:
+  split: train
+  val_split:
+  shuffle_files: false
+  action_key: action
+  steps_key: steps
+  image_keys: image_primary,image_wrist
+  primary_image_keys: observation/image,observation/image_primary
+  wrist_image_keys: observation/wrist_image,observation/image_wrist
+  proprio_keys: observation/proprio,observation/state
+  language_keys: language_instruction,natural_language_instruction,instruction
+  fallback_instruction:
+  sample_stride: 1
+  frame_stride: 1
+  max_episodes:
+  max_steps:
 
 model:
   qwen_path: pretrained_models/Qwen3.5-2B
@@ -18,6 +34,9 @@ vision:
   token_align: interpolate
 
 policy:
+  num_views: 2
+  image_size: 224
+  pad_token_id: 0
   policy_hidden_size: 1024
   raw_token_budget: 512
 
@@ -39,14 +58,16 @@ lora:
   target_modules: all-linear
 
 training:
-  output_dir: outputs/qwen35_vit_libero
+  output_dir: outputs/qwen35_vit_rlds
   max_steps: 100000
-  batch_size: 1
-  grad_accumulation_steps: 16
+  batch_size: 8
+  grad_accumulation_steps: 8
   learning_rate: 0.0002
   warmup_steps: 0
   save_every_steps: 10000
   log_every_steps: 10
+  validate_every_steps: 0
+  resume_path:
   device: cuda
   amp_dtype: bfloat16
 

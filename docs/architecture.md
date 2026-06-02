@@ -41,6 +41,7 @@ makes model replacement hard.
 
 This framework keeps the variable parts explicit:
 
+- `datasets/` owns storage formats such as LIBERO HDF5 and RLDS/TFDS.
 - `processors/` owns tokenizer, chat-template, and image-preprocessing quirks.
 - `model_adapters/` owns VLM-specific forward behavior and segment extraction.
 - `components/conditioning.py` absorbs differences in layer count, hidden size,
@@ -72,6 +73,7 @@ visual token count  -> MeanPoolTokenCompressor maps to raw_token_budget
 image processors    -> processor-specific AdapterBatch.pixel_values
 prompt format       -> processor-specific action_mask
 action scale        -> ActionNormalizer
+storage format      -> LiberoHdf5Dataset or RldsTfdsDataset
 ```
 
 The shared policy only depends on `BackboneOutput`, so a new VLM does not need a

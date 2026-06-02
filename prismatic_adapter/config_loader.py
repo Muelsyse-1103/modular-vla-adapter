@@ -39,6 +39,7 @@ def flatten_script_config(data: dict[str, Any]) -> dict[str, Any]:
 _SECTION_PREFIXES = {
     "dataset": "",
     "libero": "libero_",
+    "rlds": "rlds_",
     "model": "",
     "vision": "vision_",
     "policy": "",

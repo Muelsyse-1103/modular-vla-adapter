@@ -40,6 +40,30 @@ Use `processors/` when a model needs a different tokenizer, chat template, image
 processor, or multimodal input dictionary. The dataset owns what a sample means;
 the processor owns how that sample becomes an `AdapterBatch` for one model.
 
+## Selecting Data Input Format
+
+Training entries can select the storage backend without changing model code:
+
+```bash
+--dataset-format libero_hdf5
+--dataset-format rlds
+```
+
+Both paths normalize native data into the same raw sample shape:
+
+```python
+{
+    "instruction": "...",
+    "image_primary": ...,
+    "image_wrist": ...,
+    "proprio": ...,
+    "actions": ...,
+}
+```
+
+Then the selected processor builds `AdapterBatch`. This keeps RLDS/HDF5 storage
+details out of `model_adapters/`, `components/`, and `training/`.
+
 For LIBERO-style records, the built-in adapter expects one Python mapping with:
 
 ```python
@@ -174,6 +198,45 @@ Common field overrides:
 --libero-wrist-image-keys obs/eye_in_hand_rgb,obs/robot0_eye_in_hand_rgb
 --libero-proprio-keys obs/ee_states,obs/gripper_states
 --libero-fallback-instruction "pick up the object"
+```
+
+## RLDS / TFDS Dataset
+
+RLDS support is intentionally optional. Install the extra dependencies only
+when you need official-style TFDS/RLDS datasets:
+
+```bash
+pip install -e ".[rlds]"
+```
+
+Qwen example:
+
+```bash
+python scripts/train_qwen35_vit.py \
+  --config configs/train_rlds_qwen35_vit.example.yaml \
+  --rlds-tfds-name bridge \
+  --rlds-data-dir path/to/tfds \
+  --rlds-split train
+```
+
+Important mapping knobs:
+
+```bash
+--rlds-action-key action
+--rlds-steps-key steps
+--rlds-primary-image-keys observation/image,observation/image_primary
+--rlds-wrist-image-keys observation/wrist_image,observation/image_wrist
+--rlds-proprio-keys observation/proprio,observation/state
+--rlds-language-keys language_instruction,natural_language_instruction,instruction
+```
+
+MiniCPM-V supports the same backend:
+
+```bash
+python scripts/train_minicpm_v.py \
+  --dataset-format rlds \
+  --rlds-tfds-name bridge \
+  --rlds-data-dir path/to/tfds
 ```
 
 Train/freeze switches:

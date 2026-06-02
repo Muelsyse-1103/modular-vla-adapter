@@ -1,4 +1,5 @@
 dataset:
+  dataset_format: libero_hdf5
   libero_hdf5_root: data/libero
   libero_val_ratio: 0.02
   action_stats_json: outputs/libero_action_stats.json

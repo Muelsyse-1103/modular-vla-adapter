@@ -274,8 +274,9 @@ in the local cache.
 
 ## Training Entry
 
-Training can use either an external dataset factory or the built-in LIBERO HDF5
-factory. For LIBERO HDF5 demonstrations, first prepare action stats:
+Training can use an external dataset factory, the built-in LIBERO HDF5 loader,
+or the optional RLDS/TFDS loader. For LIBERO HDF5 demonstrations, first prepare
+action stats:
 
 ```powershell
 .\.conda\python.exe scripts\prepare_libero_hdf5.py `
@@ -319,6 +320,15 @@ train_dataset
 
 Each item should be an `AdapterBatch`. For LIBERO-style records, use
 `LiberoSampleAdapter` or `LiberoHdf5Dataset` from `prismatic_adapter.datasets`.
+
+To switch to RLDS/TFDS, set:
+
+```powershell
+.\.conda\python.exe scripts\train_qwen35_vit.py `
+  --config configs\train_rlds_qwen35_vit.example.yaml `
+  --rlds-tfds-name bridge `
+  --rlds-data-dir path\to\tfds
+```
 
 Fine-grained train/freeze switches are exposed by `TrainableConfig` and the
 training CLI:
