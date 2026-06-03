@@ -8,6 +8,7 @@ their own preferred way.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -276,6 +277,13 @@ class QwenTimmVLAAdapter(BackboneAdapter):
         attention_mask: torch.Tensor,
         labels: torch.Tensor | None,
     ) -> Any:
+        kwargs: dict[str, Any] = {}
+        if labels is None and _supports_forward_kwarg(self.language_model, "logits_to_keep"):
+            kwargs["logits_to_keep"] = torch.empty(
+                0,
+                dtype=torch.long,
+                device=inputs_embeds.device,
+            )
         return self.language_model(
             input_ids=None,
             attention_mask=attention_mask,
@@ -287,6 +295,7 @@ class QwenTimmVLAAdapter(BackboneAdapter):
             output_attentions=False,
             output_hidden_states=True,
             return_dict=True,
+            **kwargs,
         )
 
     def forward_with_action_queries(
@@ -360,6 +369,17 @@ def _find_local_vision_weight(model_id: str, cache_dir: Path | None) -> Path | N
         if candidate.exists():
             return candidate
     return None
+
+
+def _supports_forward_kwarg(module: nn.Module, name: str) -> bool:
+    try:
+        signature = inspect.signature(module.forward)
+    except (TypeError, ValueError):
+        return False
+    parameters = signature.parameters
+    if name in parameters:
+        return True
+    return any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
 
 def _align_token_count(tokens: torch.Tensor, target: int) -> torch.Tensor:
