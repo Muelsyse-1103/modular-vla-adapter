@@ -262,6 +262,21 @@ LoRA switches:
 --lora-target-modules q_proj,k_proj,v_proj,o_proj
 ```
 
+## W&B Logging
+
+W&B is optional and disabled/offline in public examples. If you enable it on a
+server, provide credentials through the environment, not through committed files:
+
+```bash
+export WANDB_API_KEY="<your-key>"
+python scripts/train_qwen35_vit.py \
+  --wandb \
+  --wandb-entity your-team-or-user \
+  --wandb-mode online
+```
+
+See `docs/security.md` before publishing training scripts or configs.
+
 ## Action Normalization
 
 Pass an action statistics JSON if dataset actions are environment-scale:

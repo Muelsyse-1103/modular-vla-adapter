@@ -143,6 +143,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-target-modules", default="all-linear")
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb-project", default="vla_adapter_minicpm_v")
+    parser.add_argument("--wandb-entity", default=None)
     parser.add_argument("--wandb-mode", default="offline", choices=["online", "offline", "disabled"])
     defaults = load_yaml_defaults(initial.config)
     defaults["config"] = initial.config
@@ -314,6 +315,7 @@ def build_training_config(args: argparse.Namespace) -> TrainingConfig:
             log_every_steps=args.log_every_steps,
             use_wandb=args.wandb,
             wandb_project=args.wandb_project,
+            wandb_entity=args.wandb_entity,
             wandb_mode=args.wandb_mode,
         ),
     )

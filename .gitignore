@@ -9,14 +9,27 @@ build/
 venv/
 .env
 .env.*
+*.env
+*.secret
+*.secrets
 .conda/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 *.egg
 outputs/
+wandb/
+*.log
+*.out
+*.err
 data/
 LIBERO/
 pretrained_models/**
 !pretrained_models/
 !pretrained_models/README.md
+
+# Server-only deployment scripts and configs (keep local, do not push)
+scripts/server/
+configs/*.server.yaml
+scripts/download_libero_hdf5.sh
+secrets/
