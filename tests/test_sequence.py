@@ -1,10 +1,12 @@
 import torch
 
 from prismatic_adapter.sequence import (
+    HiddenStateExtractor,
     build_multimodal_embeddings,
     replace_masked_embeddings,
     shift_mask_after_vision_insert,
 )
+from prismatic_adapter.types import SegmentSlices
 
 
 def test_replace_masked_embeddings_puts_queries_in_order():
@@ -46,3 +48,23 @@ def test_build_multimodal_embeddings_segments_are_explicit():
     assert labels is None
     assert segments.vision == slice(1, 4)
     assert segments.action_mask.tolist() == [[False, False, False, False, False, True, True]]
+
+
+def test_hidden_state_extractor_compresses_raw_tokens_before_stacking_layers():
+    states = [
+        torch.arange(1 * 8 * 1, dtype=torch.float32).reshape(1, 8, 1),
+        torch.arange(1 * 8 * 1, dtype=torch.float32).reshape(1, 8, 1) + 10.0,
+    ]
+    segments = SegmentSlices(
+        bos=slice(0, 1),
+        vision=slice(1, 7),
+        text=slice(7, 8),
+        action_mask=torch.tensor([[False, False, False, False, False, False, False, True]]),
+    )
+    extractor = HiddenStateExtractor(include_embedding_state=True, raw_token_budget=3)
+
+    condition = extractor(states, segments)
+
+    assert condition.raw_tokens.shape == (1, 2, 3, 1)
+    assert condition.raw_tokens[0, 0, :, 0].tolist() == [1.5, 3.5, 5.5]
+    assert condition.raw_tokens[0, 1, :, 0].tolist() == [11.5, 13.5, 15.5]

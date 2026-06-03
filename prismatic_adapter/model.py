@@ -35,7 +35,14 @@ class PrismaticAdapterPolicy(nn.Module):
             torch.zeros(config.sequence.action_query_tokens, backbone.hidden_size)
         )
         self.layer_selector = LayerSelector(config.conditioning)
-        self.hidden_extractor = HiddenStateExtractor(include_embedding_state=True)
+        self.hidden_extractor = HiddenStateExtractor(
+            include_embedding_state=True,
+            raw_token_budget=(
+                config.conditioning.raw_token_budget
+                if config.conditioning.raw_compression == "mean_pool"
+                else None
+            ),
+        )
         self.condition_projector = ConditionProjector(
             input_dim=backbone.hidden_size,
             output_dim=config.policy.hidden_size,

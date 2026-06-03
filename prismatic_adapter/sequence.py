@@ -11,6 +11,7 @@ Hugging Face model class. This module keeps the contracts explicit:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
@@ -159,6 +160,7 @@ class HiddenStateExtractor:
     """Extract per-layer Raw and ActionQuery conditions for the Bridge policy."""
 
     include_embedding_state: bool = False
+    raw_token_budget: int | None = None
 
     def layer_indices(self, hidden_states: Sequence[torch.Tensor]) -> Iterable[int]:
         start = 0 if self.include_embedding_state else 1
@@ -174,7 +176,7 @@ class HiddenStateExtractor:
         for idx in self.layer_indices(hidden_states):
             state = hidden_states[idx]
             batch_size = state.shape[0]
-            raw_layers.append(state[:, segments.vision].unsqueeze(1))
+            raw_layers.append(_mean_pool_tokens(state[:, segments.vision], self.raw_token_budget).unsqueeze(1))
             aq = state[segments.action_mask].reshape(batch_size, 1, -1, state.shape[-1])
             aq_layers.append(aq)
 
@@ -185,3 +187,19 @@ class HiddenStateExtractor:
             raw_tokens=torch.cat(raw_layers, dim=1),
             action_query_tokens=torch.cat(aq_layers, dim=1),
         )
+
+
+def _mean_pool_tokens(tokens: torch.Tensor, token_budget: int | None) -> torch.Tensor:
+    """Reduce token count before stacking layers to keep peak memory bounded."""
+
+    if token_budget is None or tokens.shape[1] <= token_budget:
+        return tokens
+    if token_budget <= 0:
+        raise ValueError("token_budget must be positive")
+
+    batch_size, token_count, hidden_size = tokens.shape
+    padded_tokens = math.ceil(token_count / token_budget) * token_budget
+    if padded_tokens != token_count:
+        pad = tokens[:, -1:].expand(batch_size, padded_tokens - token_count, hidden_size)
+        tokens = torch.cat([tokens, pad], dim=1)
+    return tokens.reshape(batch_size, token_budget, padded_tokens // token_budget, hidden_size).mean(dim=2)
