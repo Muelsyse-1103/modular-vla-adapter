@@ -20,7 +20,7 @@ offline by default:
 ```yaml
 logging:
   wandb: false
-  wandb_project: vla_adapter_qwen35_vit
+  wandb_project: Modular-vla-adapter
   wandb_mode: offline
 ```
 

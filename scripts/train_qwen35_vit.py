@@ -201,7 +201,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-dropout", type=float, default=0.0)
     parser.add_argument("--lora-target-modules", default="all-linear")
     parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--wandb-project", default="vla_adapter_qwen35_vit")
+    parser.add_argument("--wandb-project", default="Modular-vla-adapter")
     parser.add_argument("--wandb-entity", default=None)
     parser.add_argument("--wandb-mode", default="offline", choices=["online", "offline", "disabled"])
     defaults = load_yaml_defaults(initial.config)

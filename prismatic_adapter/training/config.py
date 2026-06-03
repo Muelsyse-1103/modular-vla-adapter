@@ -46,7 +46,7 @@ class CheckpointConfig:
 class LoggingConfig:
     log_every_steps: int = 10
     use_wandb: bool = False
-    wandb_project: str = "vla_adapter"
+    wandb_project: str = "Modular-vla-adapter"
     wandb_entity: str | None = None
     wandb_mode: Literal["online", "offline", "disabled"] = "offline"
     run_name: str | None = None
